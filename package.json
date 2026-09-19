@@ -5,6 +5,9 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node src/server.js",
+    "postinstall": "npx playwright install chromium",
+    "playwright:install": "npx playwright install chromium",
     "geonames:build": "node scripts/geonames_build.js"
   },
   "keywords": [],
