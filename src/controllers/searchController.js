@@ -1,17 +1,31 @@
-const scrapeAll = require('../scraper/engine');
+const { scrapeMulti, DEFAULT_SOURCES } = require('../scraper/orchestrator');
 
 function buildLocation({ country, state, city, area }) {
     const locationParts = [];
     if (area) locationParts.push(area);
     if (city) locationParts.push(city);
     if (state) locationParts.push(state);
-    if (country) locationParts.push(country);
+    // Always bias toward US if country omitted
+    locationParts.push(country || 'United States');
     return locationParts.join(', ');
+}
+
+function parseSources(raw) {
+    if (!raw) return DEFAULT_SOURCES;
+    if (Array.isArray(raw)) return raw;
+    if (typeof raw === 'string') {
+        try {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) return parsed;
+        } catch (_) {}
+        return raw.split(',').map(s => s.trim()).filter(Boolean);
+    }
+    return DEFAULT_SOURCES;
 }
 
 exports.search = async (req, res) => {
     try {
-        const { category, country, state, city, area, processedIds } = req.body;
+        const { category, country, state, city, area, processedIds, sources } = req.body;
         const locationString = buildLocation({ country, state, city, area });
         const keyword = category;
 
@@ -19,17 +33,18 @@ exports.search = async (req, res) => {
             return res.status(400).json({ error: 'Category and Location are required' });
         }
 
-        console.log(`Received search request: ${keyword} in ${locationString}`);
+        console.log(`Search: ${keyword} in ${locationString} sources=${JSON.stringify(parseSources(sources))}`);
 
-        const result = await scrapeAll(keyword, locationString, {
-            skipIds: Array.isArray(processedIds) ? processedIds : []
+        const result = await scrapeMulti(keyword, locationString, {
+            sources: parseSources(sources),
+            skipIds: Array.isArray(processedIds) ? processedIds : [],
         });
 
         res.json({
             success: true,
             count: result.leads.length,
             data: result.leads,
-            meta: result.meta
+            meta: result.meta,
         });
     } catch (error) {
         console.error('Search error:', error);
@@ -41,7 +56,7 @@ exports.searchStream = async (req, res) => {
     res.writeHead(200, {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
-        Connection: 'keep-alive'
+        Connection: 'keep-alive',
     });
 
     const send = (event, data) => {
@@ -50,7 +65,7 @@ exports.searchStream = async (req, res) => {
     };
 
     try {
-        const { category, country, state, city, area, processedIds } = req.query;
+        const { category, country, state, city, area, processedIds, sources } = req.query;
         const locationString = buildLocation({ country, state, city, area });
         const keyword = category;
 
@@ -59,8 +74,6 @@ exports.searchStream = async (req, res) => {
             res.end();
             return;
         }
-
-        console.log(`Received streaming search: ${keyword} in ${locationString}`);
 
         let skipIds = [];
         if (processedIds) {
@@ -72,16 +85,19 @@ exports.searchStream = async (req, res) => {
             }
         }
 
-        const result = await scrapeAll(keyword, locationString, {
+        console.log(`Stream search: ${keyword} in ${locationString}`);
+
+        const result = await scrapeMulti(keyword, locationString, {
+            sources: parseSources(sources),
             onProgress: (payload) => send('progress', payload),
-            skipIds
+            skipIds,
         });
 
         send('done', {
             success: true,
             count: result.leads.length,
             data: result.leads,
-            meta: result.meta
+            meta: result.meta,
         });
     } catch (error) {
         console.error('Streaming search error:', error);
@@ -89,4 +105,16 @@ exports.searchStream = async (req, res) => {
     } finally {
         res.end();
     }
+};
+
+exports.listSources = (req, res) => {
+    res.json({
+        sources: [
+            { id: 'maps', label: 'Google Maps', description: 'Local businesses via Maps listings' },
+            { id: 'osm', label: 'OpenStreetMap', description: 'Public OSM business POIs (free)' },
+            { id: 'github', label: 'GitHub', description: 'Public profiles by keyword + location' },
+            { id: 'google_web', label: 'Google Search', description: 'Web SERP contact snippets' },
+        ],
+        default: DEFAULT_SOURCES,
+    });
 };
