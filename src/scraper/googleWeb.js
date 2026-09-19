@@ -1,6 +1,5 @@
 /**
  * Multi-query Google SERP email harvest (public results only).
- * Inspired by EmailFinder / theHarvester: several dorks, parse snippets + result URLs.
  */
 
 const { startBrowser } = require('./browser');
@@ -15,6 +14,8 @@ function buildQueries(keyword, location) {
     `${k} ${loc} "@" email -inurl:(login OR signup)`,
     `"${k}" "${loc}" (email OR e-mail) (contact OR sales)`,
     `${k} near ${loc} contact OR info@`,
+    `"${k}" "${loc}" (info@ OR sales@ OR office@ OR contact@)`,
+    `${k} ${loc} "email us" OR "send email" OR mailto`,
   ];
 }
 
@@ -41,7 +42,7 @@ async function parseSerpPage(page) {
 }
 
 async function scrapeGoogleWeb(keyword, location, options = {}) {
-  const { onProgress = () => {}, max = 60, maxQueries = 4 } = options;
+  const { onProgress = () => {}, max = 200, maxQueries = 6 } = options;
   const leads = [];
   const seenHost = new Set();
   const seenEmail = new Set();
@@ -61,7 +62,7 @@ async function scrapeGoogleWeb(keyword, location, options = {}) {
       onProgress({
         stage: 'google_web',
         message: `Google query ${qi + 1}/${queries.length}`,
-        percent: 15 + qi * 15,
+        percent: 15 + qi * 12,
       });
 
       try {

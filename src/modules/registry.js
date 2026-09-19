@@ -1,6 +1,5 @@
 /**
  * Module registry — loads all discovery modules (recon-ng / theHarvester style).
- * Enable/disable via sources array in the API.
  */
 
 const maps = require('../scraper/engine');
@@ -11,8 +10,9 @@ const { scrapeOSM } = require('../scraper/osm');
 const { scrapeSocial } = require('../scraper/social');
 const { scrapeDirectories } = require('../scraper/directories');
 const { scrapeDuckDuckGo } = require('../scraper/duckduckgo');
+const { scrapeYahooWeb } = require('../scraper/yahooWeb');
+const { scrapeEmailDorks } = require('../scraper/emailDorks');
 
-/** @type {Record<string, { id: string, label: string, description: string, run: Function }>} */
 const MODULES = {
   maps: {
     id: 'maps',
@@ -42,17 +42,38 @@ const MODULES = {
     needsBrowser: true,
     run: (keyword, location, opts) => scrapeBingWeb(keyword, location, opts),
   },
+  yahoo: {
+    id: 'yahoo',
+    label: 'Yahoo Search',
+    description: 'Yahoo SERP public results',
+    needsBrowser: true,
+    run: (keyword, location, opts) => scrapeYahooWeb(keyword, location, opts),
+  },
+  duckduckgo: {
+    id: 'duckduckgo',
+    label: 'DuckDuckGo',
+    description: 'Extra free SERP',
+    needsBrowser: true,
+    run: (keyword, location, opts) => scrapeDuckDuckGo(keyword, location, opts),
+  },
+  email_dorks: {
+    id: 'email_dorks',
+    label: 'Email dorks',
+    description: 'US-scoped public email/contact dorks',
+    needsBrowser: true,
+    run: (keyword, location, opts) => scrapeEmailDorks(keyword, location, opts),
+  },
   social: {
     id: 'social',
     label: 'Social (public SERP)',
-    description: 'FB / LinkedIn company / IG via Google site: (no login)',
+    description: 'FB / LinkedIn company / IG via Google site:',
     needsBrowser: true,
     run: (keyword, location, opts) => scrapeSocial(keyword, location, opts),
   },
   directories: {
     id: 'directories',
     label: 'Directories',
-    description: 'Yelp, YellowPages, BBB, Manta, Angi… via public search',
+    description: 'Yelp, YellowPages, BBB, Manta, Angi…',
     needsBrowser: true,
     run: (keyword, location, opts) => scrapeDirectories(keyword, location, opts),
   },
@@ -63,16 +84,11 @@ const MODULES = {
     needsBrowser: false,
     run: (keyword, location, opts) => scrapeGitHub(keyword, location, opts),
   },
-  duckduckgo: {
-    id: 'duckduckgo',
-    label: 'DuckDuckGo',
-    description: 'Extra free SERP (theHarvester-style)',
-    needsBrowser: true,
-    run: (keyword, location, opts) => scrapeDuckDuckGo(keyword, location, opts),
-  },
 };
 
-const DEFAULT_MODULES = ['maps', 'osm', 'google_web', 'bing', 'duckduckgo', 'social', 'directories'];
+const DEFAULT_MODULES = [
+  'maps', 'osm', 'google_web', 'bing', 'yahoo', 'duckduckgo', 'email_dorks', 'social', 'directories',
+];
 
 function listModules() {
   return Object.values(MODULES).map(({ id, label, description, needsBrowser }) => ({
