@@ -1,43 +1,16 @@
-const scrapeMaps = require('./engine');
-const { scrapeGitHub } = require('./github');
-const { scrapeGoogleWeb } = require('./googleWeb');
-const { scrapeBingWeb } = require('./bingWeb');
-const { scrapeOSM } = require('./osm');
-const { scrapeSocial } = require('./social');
-const { scrapeDirectories } = require('./directories');
+/**
+ * Orchestrator — runs selected discovery modules (theHarvester / recon-ng style).
+ */
+const { resolveModules, DEFAULT_MODULES, listModules } = require('../modules/registry');
 const { enrichLeadsWithWebsiteEmails } = require('./websiteCrawl');
 const { isLikelyRealEmail } = require('./emailUtils');
 
-const SOURCE_RUNNERS = {
-  maps: (keyword, location, opts) => scrapeMaps(keyword, location, opts),
-  github: (keyword, location, opts) => scrapeGitHub(keyword, location, opts),
-  google_web: (keyword, location, opts) => scrapeGoogleWeb(keyword, location, opts),
-  bing: (keyword, location, opts) => scrapeBingWeb(keyword, location, opts),
-  osm: (keyword, location, opts) => scrapeOSM(keyword, location, opts),
-  social: (keyword, location, opts) => scrapeSocial(keyword, location, opts),
-  directories: (keyword, location, opts) => scrapeDirectories(keyword, location, opts),
-};
-
-const DEFAULT_SOURCES = ['maps', 'osm', 'google_web', 'bing', 'social', 'directories', 'github'];
 const TARGET_MAX = 2500;
 
-/** Major US metros for multi-city expansion (public business discovery only). */
 const US_METRO_HINTS = [
-  'New York, NY',
-  'Los Angeles, CA',
-  'Chicago, IL',
-  'Houston, TX',
-  'Phoenix, AZ',
-  'Philadelphia, PA',
-  'San Antonio, TX',
-  'San Diego, CA',
-  'Dallas, TX',
-  'Austin, TX',
-  'Miami, FL',
-  'Atlanta, GA',
-  'Seattle, WA',
-  'Denver, CO',
-  'Boston, MA',
+  'New York, NY', 'Los Angeles, CA', 'Chicago, IL', 'Houston, TX', 'Phoenix, AZ',
+  'Philadelphia, PA', 'San Antonio, TX', 'San Diego, CA', 'Dallas, TX', 'Austin, TX',
+  'Miami, FL', 'Atlanta, GA', 'Seattle, WA', 'Denver, CO', 'Boston, MA',
 ];
 
 function normalizeLead(lead) {
@@ -57,7 +30,7 @@ function normalizeLead(lead) {
     website: lead.website || '',
     keyword: lead.keyword || '',
     location: lead.location || '',
-    source: lead.source || 'maps',
+    source: lead.source || 'unknown',
     emailScore: lead.emailScore || 0,
     extra: lead.extra || undefined,
   };
@@ -78,54 +51,51 @@ function dedupeKey(lead) {
   return `n:${name}|${String(lead.address || '').toLowerCase().slice(0, 40)}`;
 }
 
-function sourceMax(source, room) {
-  if (source === 'maps') return Math.min(600, room);
-  if (source === 'directories') return Math.min(500, room);
-  if (source === 'social') return Math.min(300, room);
-  if (source === 'google_web' || source === 'bing') return Math.min(350, room);
-  if (source === 'osm') return Math.min(400, room);
+function sourceMax(sourceId, room) {
+  if (sourceId === 'maps') return Math.min(600, room);
+  if (sourceId === 'directories') return Math.min(500, room);
+  if (sourceId === 'social') return Math.min(300, room);
+  if (sourceId === 'google_web' || sourceId === 'bing' || sourceId === 'duckduckgo') return Math.min(350, room);
+  if (sourceId === 'osm') return Math.min(400, room);
   return Math.min(250, room);
 }
 
 async function scrapeMulti(keyword, location, options = {}) {
   const {
-    sources = DEFAULT_SOURCES,
+    sources = DEFAULT_MODULES,
     onProgress = () => {},
     skipIds = [],
     enrichWebsites = true,
   } = options;
 
-  const selected = (Array.isArray(sources) && sources.length ? sources : DEFAULT_SOURCES)
-    .map((s) => String(s).toLowerCase().trim())
-    .filter((s) => SOURCE_RUNNERS[s]);
-
+  const modules = resolveModules(sources);
   const allLeads = [];
   const seen = new Set(skipIds.filter(Boolean));
   const perSource = {};
 
-  for (let i = 0; i < selected.length; i++) {
+  for (let i = 0; i < modules.length; i++) {
     if (allLeads.length >= TARGET_MAX) break;
-    const source = selected[i];
-    const basePct = Math.floor((i / selected.length) * 55);
+    const mod = modules[i];
+    const basePct = Math.floor((i / modules.length) * 55);
     onProgress({
       stage: 'source',
-      message: `Running source: ${source} (${i + 1}/${selected.length}) — ${allLeads.length} so far`,
+      message: `Module: ${mod.id} (${i + 1}/${modules.length}) — ${allLeads.length} so far`,
       percent: basePct + 5,
-      source,
+      source: mod.id,
     });
     try {
       const room = TARGET_MAX - allLeads.length;
-      const result = await SOURCE_RUNNERS[source](keyword, location, {
+      const result = await mod.run(keyword, location, {
         onProgress: (p) =>
           onProgress({
             ...p,
-            source,
-            percent: basePct + Math.floor(((p.percent || 0) / 100) * (55 / selected.length)),
+            source: mod.id,
+            percent: basePct + Math.floor(((p.percent || 0) / 100) * (55 / modules.length)),
           }),
         skipIds: Array.from(seen),
-        max: sourceMax(source, room),
+        max: sourceMax(mod.id, room),
       });
-      const leads = (result.leads || []).map((l) => normalizeLead({ ...l, source: l.source || source }));
+      const leads = (result.leads || []).map((l) => normalizeLead({ ...l, source: l.source || mod.id }));
       let added = 0;
       for (const lead of leads) {
         if (allLeads.length >= TARGET_MAX) break;
@@ -136,21 +106,21 @@ async function scrapeMulti(keyword, location, options = {}) {
         allLeads.push(lead);
         added++;
       }
-      perSource[source] = { found: leads.length, kept: added };
+      perSource[mod.id] = { found: leads.length, kept: added };
       onProgress({
         stage: 'source',
-        message: `${source}: kept ${added} (total ${allLeads.length})`,
-        percent: basePct + Math.floor(55 / selected.length),
-        source,
+        message: `${mod.id}: kept ${added} (total ${allLeads.length})`,
+        percent: basePct + Math.floor(55 / modules.length),
+        source: mod.id,
       });
     } catch (err) {
-      console.error(`[orchestrator] ${source}:`, err.message);
-      perSource[source] = { error: err.message };
+      console.error(`[orchestrator] ${mod.id}:`, err.message);
+      perSource[mod.id] = { error: err.message };
       onProgress({
         stage: 'source',
-        message: `${source} failed: ${err.message}`,
+        message: `${mod.id} failed: ${err.message}`,
         percent: basePct + 10,
-        source,
+        source: mod.id,
       });
     }
   }
@@ -158,23 +128,13 @@ async function scrapeMulti(keyword, location, options = {}) {
   if (enrichWebsites && allLeads.length) {
     onProgress({
       stage: 'website_crawl',
-      message: `Crawling websites for public contact emails (up to 500)…`,
+      message: 'Crawling websites for public contact emails (up to 500)…',
       percent: 65,
     });
     try {
-      await enrichLeadsWithWebsiteEmails(allLeads, {
-        onProgress,
-        concurrency: 8,
-        maxLeads: 500,
-      });
+      await enrichLeadsWithWebsiteEmails(allLeads, { onProgress, concurrency: 8, maxLeads: 500 });
       for (let i = 0; i < allLeads.length; i++) allLeads[i] = normalizeLead(allLeads[i]);
-      const withEmail = allLeads.filter((l) => l.email).length;
-      perSource.website_crawl = { leadsWithEmail: withEmail };
-      onProgress({
-        stage: 'website_crawl',
-        message: `Website crawl done — ${withEmail} with email`,
-        percent: 92,
-      });
+      perSource.website_crawl = { leadsWithEmail: allLeads.filter((l) => l.email).length };
     } catch (err) {
       perSource.website_crawl = { error: err.message };
     }
@@ -201,22 +161,16 @@ async function scrapeMulti(keyword, location, options = {}) {
       processedCount: allLeads.length,
       withEmail: allLeads.filter((l) => l.email).length,
       targetMax: TARGET_MAX,
-      skippedCount: 0,
-      remaining: 0,
-      sources: selected,
+      sources: modules.map((m) => m.id),
       perSource,
     },
   };
 }
 
-/**
- * Run the same keyword across several US metros and merge/dedupe.
- * Use when city is omitted or multiCity=true — public business discovery only.
- */
 async function scrapeMultiCity(keyword, options = {}) {
   const {
     cities = US_METRO_HINTS.slice(0, 8),
-    sources = DEFAULT_SOURCES,
+    sources = DEFAULT_MODULES,
     onProgress = () => {},
     enrichWebsites = true,
   } = options;
@@ -243,7 +197,9 @@ async function scrapeMultiCity(keyword, options = {}) {
           onProgress({
             ...p,
             message: `[${city}] ${p.message || ''}`,
-            percent: Math.floor((i / cities.length) * 90) + Math.floor(((p.percent || 0) / 100) * (90 / cities.length)),
+            percent:
+              Math.floor((i / cities.length) * 90) +
+              Math.floor(((p.percent || 0) / 100) * (90 / cities.length)),
           }),
       });
       let added = 0;
@@ -284,7 +240,6 @@ async function scrapeMultiCity(keyword, options = {}) {
     leads: allLeads,
     meta: {
       totalCards: allLeads.length,
-      processedCount: allLeads.length,
       withEmail: allLeads.filter((l) => l.email).length,
       targetMax: TARGET_MAX,
       multiCity: true,
@@ -295,11 +250,16 @@ async function scrapeMultiCity(keyword, options = {}) {
   };
 }
 
+const DEFAULT_SOURCES = DEFAULT_MODULES;
+const SOURCE_RUNNERS = {};
+
 module.exports = {
   scrapeMulti,
   scrapeMultiCity,
   DEFAULT_SOURCES,
+  DEFAULT_MODULES,
   SOURCE_RUNNERS,
   TARGET_MAX,
   US_METRO_HINTS,
+  listModules,
 };
