@@ -4,6 +4,7 @@ const { scrapeGoogleWeb } = require('./googleWeb');
 const { scrapeBingWeb } = require('./bingWeb');
 const { scrapeOSM } = require('./osm');
 const { scrapeSocial } = require('./social');
+const { scrapeDirectories } = require('./directories');
 const { enrichLeadsWithWebsiteEmails } = require('./websiteCrawl');
 const { isLikelyRealEmail } = require('./emailUtils');
 
@@ -14,10 +15,18 @@ const SOURCE_RUNNERS = {
   bing: (keyword, location, opts) => scrapeBingWeb(keyword, location, opts),
   osm: (keyword, location, opts) => scrapeOSM(keyword, location, opts),
   social: (keyword, location, opts) => scrapeSocial(keyword, location, opts),
+  directories: (keyword, location, opts) => scrapeDirectories(keyword, location, opts),
 };
 
-const DEFAULT_SOURCES = ['maps', 'osm', 'google_web', 'bing', 'social', 'github'];
-const TARGET_MAX = 1000;
+const DEFAULT_SOURCES = ['maps', 'osm', 'google_web', 'bing', 'social', 'directories', 'github'];
+
+/**
+ * Cap on unique leads per single search.
+ * 10k emails from free public pages alone is not realistic in one run
+ * (rate limits, SERP depth, businesses that hide email). Use multi-city
+ * or paid APIs for very large lists.
+ */
+const TARGET_MAX = 2500;
 
 function normalizeLead(lead) {
   const emails = [...(Array.isArray(lead.emails) ? lead.emails : []), lead.email || '']
@@ -57,6 +66,15 @@ function dedupeKey(lead) {
   return `n:${name}|${String(lead.address || '').toLowerCase().slice(0, 40)}`;
 }
 
+function sourceMax(source, room) {
+  if (source === 'maps') return Math.min(600, room);
+  if (source === 'directories') return Math.min(500, room);
+  if (source === 'social') return Math.min(300, room);
+  if (source === 'google_web' || source === 'bing') return Math.min(350, room);
+  if (source === 'osm') return Math.min(400, room);
+  return Math.min(250, room);
+}
+
 async function scrapeMulti(keyword, location, options = {}) {
   const {
     sources = DEFAULT_SOURCES,
@@ -93,7 +111,7 @@ async function scrapeMulti(keyword, location, options = {}) {
             percent: basePct + Math.floor(((p.percent || 0) / 100) * (55 / selected.length)),
           }),
         skipIds: Array.from(seen),
-        max: source === 'maps' ? Math.min(400, room) : Math.min(250, room),
+        max: sourceMax(source, room),
       });
       const leads = (result.leads || []).map((l) => normalizeLead({ ...l, source: l.source || source }));
       let added = 0;
@@ -128,14 +146,14 @@ async function scrapeMulti(keyword, location, options = {}) {
   if (enrichWebsites && allLeads.length) {
     onProgress({
       stage: 'website_crawl',
-      message: `Crawling websites for emails (up to 150)…`,
+      message: `Crawling websites for emails (up to 400)…`,
       percent: 65,
     });
     try {
       await enrichLeadsWithWebsiteEmails(allLeads, {
         onProgress,
-        concurrency: 5,
-        maxLeads: 150,
+        concurrency: 6,
+        maxLeads: 400,
       });
       for (let i = 0; i < allLeads.length; i++) allLeads[i] = normalizeLead(allLeads[i]);
       const withEmail = allLeads.filter((l) => l.email).length;

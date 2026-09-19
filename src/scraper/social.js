@@ -1,6 +1,6 @@
 /**
- * Public social / directory discovery via Google site: queries.
- * Surfaces public Facebook pages, LinkedIn company pages, Yelp, YellowPages — no login.
+ * Public social discovery via Google site: queries (no login).
+ * Facebook pages, LinkedIn company, Instagram business profiles when indexed.
  */
 
 const { startBrowser } = require('./browser');
@@ -12,19 +12,19 @@ function socialQueries(keyword, location) {
   return [
     `site:facebook.com/pages OR site:facebook.com "${k}" "${loc}"`,
     `site:linkedin.com/company "${k}" "${loc}"`,
-    `site:yelp.com "${k}" "${loc}"`,
-    `site:yellowpages.com "${k}" "${loc}"`,
-    `site:bbb.org "${k}" "${loc}"`,
+    `site:instagram.com "${k}" "${loc}" (business OR shop OR studio)`,
+    `site:twitter.com OR site:x.com "${k}" "${loc}" (contact OR email)`,
+    `"${k}" "${loc}" (facebook.com OR linkedin.com/company)`,
   ];
 }
 
 async function scrapeSocial(keyword, location, options = {}) {
-  const { onProgress = () => {}, max = 200, maxQueries = 5 } = options;
+  const { onProgress = () => {}, max = 250, maxQueries = 5 } = options;
   const leads = [];
   const seen = new Set();
   let browser;
 
-  onProgress({ stage: 'social', message: 'Public social / directory search…', percent: 10 });
+  onProgress({ stage: 'social', message: 'Public social search…', percent: 10 });
 
   try {
     const started = await startBrowser();
@@ -45,7 +45,7 @@ async function scrapeSocial(keyword, location, options = {}) {
           waitUntil: 'domcontentloaded',
           timeout: 45000,
         });
-        await page.waitForTimeout(1600);
+        await page.waitForTimeout(1500);
         try {
           const btn = await page.$('button:has-text("Accept all"), button:has-text("I agree")');
           if (btn) await btn.click();
@@ -82,9 +82,8 @@ async function scrapeSocial(keyword, location, options = {}) {
           let platform = 'social';
           if (/facebook\.com/i.test(r.href)) platform = 'facebook';
           else if (/linkedin\.com/i.test(r.href)) platform = 'linkedin';
-          else if (/yelp\.com/i.test(r.href)) platform = 'yelp';
-          else if (/yellowpages\.com/i.test(r.href)) platform = 'yellowpages';
-          else if (/bbb\.org/i.test(r.href)) platform = 'bbb';
+          else if (/instagram\.com/i.test(r.href)) platform = 'instagram';
+          else if (/twitter\.com|x\.com/i.test(r.href)) platform = 'x';
 
           leads.push({
             id: `social:${Buffer.from(host).toString('base64').slice(0, 24)}`,
