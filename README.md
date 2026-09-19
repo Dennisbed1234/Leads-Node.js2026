@@ -22,13 +22,32 @@ Multi-source **US business** lead tool with **public email** extraction.
 ## Run
 
 ```bash
-npm install
+npm install          # also runs: npx playwright install chromium (postinstall)
+# If you still see "Executable doesn't exist":
+npm run playwright:install
+# or manually:
 npx playwright install chromium
+
 echo 'DB_DISABLED=true' >> .env
 # optional
 echo 'GITHUB_TOKEN=ghp_xxx' >> .env
-node src/server.js
+npm start
+# or: node src/server.js
 ```
+
+### Troubleshooting: Playwright "Executable doesn't exist"
+
+This error means the Chromium binary was not downloaded. Run:
+
+```bash
+npx playwright install chromium
+```
+
+On some hosts (AWS Lambda, Vercel, certain sandboxes) the default cache path is not writable or browsers are stripped. Options:
+
+1. Run `npx playwright install chromium` during the **build** step so binaries are included in the image/artifact.
+2. Set `PLAYWRIGHT_BROWSERS_PATH` to a writable directory (e.g. `/tmp/ms-playwright`) and install there at startup or build time.
+3. For pure serverless, consider a Lambda-compatible Chromium package and set `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` to its binary.
 
 ## Scope
 
