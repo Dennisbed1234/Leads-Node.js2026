@@ -2,104 +2,148 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#070b14" />
   <title>US Leads Generator</title>
   <link rel="stylesheet" href="css/style.css" />
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet" />
 </head>
 <body>
-  <div class="background-blobs"><div class="blob blob-1"></div><div class="blob blob-2"></div></div>
+  <div class="background-blobs" aria-hidden="true">
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+  </div>
+
   <div class="container">
     <header>
       <h1>US Leads <span class="highlight">Generator</span></h1>
-      <p>Public emails · Maps · SERP · Website crawl · Bing · OSM · GitHub</p>
+      <p class="subtitle">Public business contacts · Maps · Search · Social pages · Website emails</p>
     </header>
-    <div class="control-panel glass-panel">
-      <div class="input-group">
-        <label>Category / Keyword</label>
+
+    <section class="glass-panel control-panel" id="controlPanel">
+      <div class="field" data-field="category">
+        <label for="categoryToggle">Category / Keyword</label>
         <div class="dropdown" id="categoryDropdown">
-          <button type="button" class="dropdown-toggle" id="categoryToggle">Select category...</button>
-          <div class="dropdown-panel hidden" id="categoryPanel">
-            <input type="text" class="dropdown-search" id="categorySearch" placeholder="Type to search..." />
+          <button type="button" class="dropdown-toggle" id="categoryToggle" aria-haspopup="listbox">
+            <span class="label-text">Select category…</span><span class="chevron" aria-hidden="true"></span>
+          </button>
+          <div class="dropdown-panel hidden" id="categoryPanel" role="listbox">
+            <input type="search" class="dropdown-search" id="categorySearch" placeholder="Search or type custom…" autocomplete="off" />
             <div class="dropdown-list" id="categoryList"></div>
           </div>
         </div>
       </div>
-      <div class="input-group">
-        <label>Country</label>
+
+      <div class="field" data-field="country">
+        <label for="countryToggle">Country</label>
         <div class="dropdown" id="countryDropdown">
-          <button type="button" class="dropdown-toggle" id="countryToggle">Select country...</button>
+          <button type="button" class="dropdown-toggle" id="countryToggle">
+            <span class="label-text">Select country…</span><span class="chevron" aria-hidden="true"></span>
+          </button>
           <div class="dropdown-panel hidden" id="countryPanel">
-            <input type="text" class="dropdown-search" id="countrySearch" placeholder="Type to search..." />
+            <input type="search" class="dropdown-search" id="countrySearch" placeholder="Search…" autocomplete="off" />
             <div class="dropdown-list" id="countryList"></div>
           </div>
         </div>
       </div>
-      <div class="input-group">
-        <label>State</label>
+
+      <div class="field" data-field="state">
+        <label for="stateToggle">State</label>
         <div class="dropdown" id="stateDropdown">
-          <button type="button" class="dropdown-toggle" id="stateToggle" disabled>Select state...</button>
+          <button type="button" class="dropdown-toggle is-disabled" id="stateToggle" disabled>
+            <span class="label-text">Select state…</span><span class="chevron" aria-hidden="true"></span>
+          </button>
           <div class="dropdown-panel hidden" id="statePanel">
-            <input type="text" class="dropdown-search" id="stateSearch" placeholder="Type to search..." />
+            <input type="search" class="dropdown-search" id="stateSearch" placeholder="Search…" autocomplete="off" />
             <div class="dropdown-list" id="stateList"></div>
           </div>
         </div>
       </div>
-      <div class="input-group">
-        <label>City</label>
+
+      <div class="field" data-field="city">
+        <label for="cityToggle">City</label>
         <div class="dropdown" id="cityDropdown">
-          <button type="button" class="dropdown-toggle" id="cityToggle" disabled>Select city...</button>
+          <button type="button" class="dropdown-toggle is-disabled" id="cityToggle" disabled>
+            <span class="label-text">Select city…</span><span class="chevron" aria-hidden="true"></span>
+          </button>
           <div class="dropdown-panel hidden" id="cityPanel">
-            <input type="text" class="dropdown-search" id="citySearch" placeholder="Type to search..." />
+            <input type="search" class="dropdown-search" id="citySearch" placeholder="Search or type…" autocomplete="off" />
             <div class="dropdown-list" id="cityList"></div>
           </div>
         </div>
       </div>
-      <div class="input-group">
-        <label>Area (Optional)</label>
+
+      <div class="field" data-field="area">
+        <label for="areaToggle">Area (optional)</label>
         <div class="dropdown" id="areaDropdown">
-          <button type="button" class="dropdown-toggle" id="areaToggle" disabled>Neighborhood...</button>
+          <button type="button" class="dropdown-toggle is-disabled" id="areaToggle" disabled>
+            <span class="label-text">Neighborhood…</span><span class="chevron" aria-hidden="true"></span>
+          </button>
           <div class="dropdown-panel hidden" id="areaPanel">
-            <input type="text" class="dropdown-search" id="areaSearch" placeholder="Type neighborhood..." />
+            <input type="search" class="dropdown-search" id="areaSearch" placeholder="Type neighborhood…" autocomplete="off" />
             <div class="dropdown-list" id="areaList"></div>
           </div>
         </div>
       </div>
-      <div class="input-group" style="grid-column:1/-1">
+
+      <div class="field field-full sources-block">
         <label>Sources</label>
-        <div id="sourceChecks" style="display:flex;flex-wrap:wrap;gap:12px;padding:8px 0">
-          <label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" name="source" value="maps" checked /> Google Maps</label>
-          <label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" name="source" value="osm" checked /> OpenStreetMap</label>
-          <label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" name="source" value="google_web" checked /> Google Search</label>
-          <label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" name="source" value="bing" checked /> Bing</label>
-          <label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" name="source" value="github" checked /> GitHub</label>
+        <div class="sources-grid" id="sourceChecks">
+          <label class="source-chip"><input type="checkbox" name="source" value="maps" checked /> Maps</label>
+          <label class="source-chip"><input type="checkbox" name="source" value="osm" checked /> OSM</label>
+          <label class="source-chip"><input type="checkbox" name="source" value="google_web" checked /> Google</label>
+          <label class="source-chip"><input type="checkbox" name="source" value="bing" checked /> Bing</label>
+          <label class="source-chip"><input type="checkbox" name="source" value="social" checked /> Social</label>
+          <label class="source-chip"><input type="checkbox" name="source" value="github" /> GitHub</label>
         </div>
-        <p style="font-size:12px;opacity:0.75;margin:4px 0 0">After discovery, public websites are crawled for /contact & mailto emails automatically.</p>
+        <p class="hint">Social uses public search (Facebook / LinkedIn company / Yelp pages). Websites are crawled for contact emails after discovery. Large runs can take several minutes.</p>
       </div>
-      <div class="input-group action-group">
-        <button id="scrapeBtn" class="primary-btn"><span>Start Scraping</span><div class="btn-glow"></div></button>
+
+      <div class="field field-full">
+        <button type="button" id="scrapeBtn" class="primary-btn">Start search</button>
       </div>
+    </section>
+
+    <div class="status-bar hidden" id="statusBar">
+      <div class="loader" aria-hidden="true"></div>
+      <span id="statusText">Ready</span>
     </div>
-    <div class="status-bar hidden" id="statusBar"><div class="loader"></div><span id="statusText">Ready...</span></div>
-    <div class="tracking-panel glass-panel hidden" id="trackingPanel">
-      <div class="tracking-header"><h2>Live Tracking</h2><span id="trackingPhase">Idle</span></div>
+
+    <section class="glass-panel tracking-panel hidden" id="trackingPanel">
+      <div class="tracking-header">
+        <h2>Live progress</h2>
+        <span id="trackingPhase">Idle</span>
+      </div>
       <div class="tracking-progress"><div id="trackingBar"></div></div>
       <div class="tracking-log" id="trackingLog"></div>
-    </div>
-    <div class="results-container glass-panel hidden" id="resultsContainer">
+    </section>
+
+    <section class="glass-panel results-container hidden" id="resultsContainer">
       <div class="results-header">
         <h2>Results <span id="resultCount" class="badge">0</span></h2>
-        <button class="secondary-btn hidden" id="getMoreBtn">Get More</button>
-        <button class="secondary-btn" id="downloadBtn">Download CSV</button>
+        <div class="results-actions">
+          <button type="button" class="secondary-btn hidden" id="getMoreBtn">Get more</button>
+          <button type="button" class="secondary-btn" id="downloadBtn">Download CSV</button>
+        </div>
       </div>
       <div class="table-wrapper">
         <table id="resultsTable">
-          <thead><tr><th>Source</th><th>Name</th><th>Address</th><th>Phone</th><th>Email</th><th>Rating</th><th>Website</th></tr></thead>
+          <thead>
+            <tr>
+              <th>Source</th>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Phone</th>
+              <th>Address</th>
+              <th>Website</th>
+            </tr>
+          </thead>
           <tbody></tbody>
         </table>
       </div>
-    </div>
+    </section>
   </div>
+
   <script src="js/app.js"></script>
 </body>
 </html>
