@@ -4,6 +4,7 @@
  */
 
 const { extractEmails, extractMailto, domainFromUrl, scoreEmail } = require('./emailUtils');
+const { isServerless } = require('./browser');
 
 const CONTACT_PATHS = [
   '/',
@@ -144,16 +145,20 @@ async function crawlWebsiteForEmails(websiteUrl, opts = {}) {
 }
 
 async function enrichLeadsWithWebsiteEmails(leads, options = {}) {
-  const { onProgress = () => {}, concurrency = 8, maxLeads = 500 } = options;
+  // On serverless (Vercel etc.) keep the crawl short to avoid timeouts / connection drops
+  const defaultMax = isServerless ? 80 : 500;
+  const defaultConcurrency = isServerless ? 4 : 8;
+  const { onProgress = () => {}, concurrency = defaultConcurrency, maxLeads = defaultMax } = options;
   const targets = leads
     .filter((l) => l.website && /^https?:/i.test(String(l.website)))
     .slice(0, maxLeads);
   let done = 0;
+  let errors = 0;
 
   async function worker(slice) {
     for (const lead of slice) {
       try {
-        const { emails } = await crawlWebsiteForEmails(lead.website, { maxPages: 7 });
+        const { emails } = await crawlWebsiteForEmails(lead.website, { maxPages: isServerless ? 4 : 7 });
         if (emails.length) {
           const best = emails[0];
           lead.email = best.email;
@@ -161,20 +166,28 @@ async function enrichLeadsWithWebsiteEmails(leads, options = {}) {
           lead.emailScore = best.score;
           lead.extra = { ...(lead.extra || {}), emailPaths: emails.map((e) => e.path) };
         }
-      } catch (_) {}
+      } catch (err) {
+        errors++;
+        // swallow per-site errors so one bad site does not kill the whole job
+      }
       done++;
-      if (done % 8 === 0 || done === targets.length) {
+      if (done % 5 === 0 || done === targets.length) {
         onProgress({
           stage: 'website_crawl',
-          message: `Website email crawl ${done}/${targets.length}`,
+          message: `Website email crawl ${done}/${targets.length}` + (errors ? ` (${errors} errors)` : ''),
           percent: 70 + Math.floor((done / Math.max(1, targets.length)) * 25),
         });
       }
     }
   }
 
-  const chunks = Array.from({ length: concurrency }, () => []);
-  targets.forEach((t, i) => chunks[i % concurrency].push(t));
+  if (!targets.length) {
+    onProgress({ stage: 'website_crawl', message: 'No websites to crawl', percent: 95 });
+    return leads;
+  }
+
+  const chunks = Array.from({ length: Math.min(concurrency, targets.length) }, () => []);
+  targets.forEach((t, i) => chunks[i % chunks.length].push(t));
   await Promise.all(chunks.map((c) => worker(c)));
   return leads;
 }
