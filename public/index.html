@@ -18,7 +18,7 @@
   <div class="container">
     <header>
       <h1>US Leads <span class="highlight">Generator</span></h1>
-      <p class="subtitle">Modular OSINT · Maps · Directories · Search · Email extractor · Export CSV / TXT</p>
+      <p class="subtitle">Modular OSINT · Maps · Directories · Search · Email dorks · Extractor · CSV/TXT</p>
     </header>
 
     <section class="glass-panel control-panel" id="controlPanel">
@@ -95,11 +95,13 @@
           <label class="source-chip"><input type="checkbox" name="source" value="google_web" checked /> Google</label>
           <label class="source-chip"><input type="checkbox" name="source" value="bing" checked /> Bing</label>
           <label class="source-chip"><input type="checkbox" name="source" value="duckduckgo" checked /> DuckDuckGo</label>
+          <label class="source-chip"><input type="checkbox" name="source" value="yahoo" checked /> Yahoo</label>
+          <label class="source-chip"><input type="checkbox" name="source" value="email_dorks" checked /> Email dorks</label>
           <label class="source-chip"><input type="checkbox" name="source" value="social" checked /> Social</label>
           <label class="source-chip"><input type="checkbox" name="source" value="directories" checked /> Directories</label>
           <label class="source-chip"><input type="checkbox" name="source" value="github" /> GitHub</label>
         </div>
-        <p class="hint">Leave <strong>City</strong> empty to auto-run major US metros. Website contact pages are crawled for emails after discovery.</p>
+        <p class="hint">Leave <strong>City</strong> empty to auto-run major US metros. <strong>Email dorks</strong> find public contact emails on indexed pages (US-scoped). Website contact pages are crawled after discovery.</p>
       </div>
 
       <div class="field field-full">
