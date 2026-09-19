@@ -19,14 +19,26 @@ const SOURCE_RUNNERS = {
 };
 
 const DEFAULT_SOURCES = ['maps', 'osm', 'google_web', 'bing', 'social', 'directories', 'github'];
-
-/**
- * Cap on unique leads per single search.
- * 10k emails from free public pages alone is not realistic in one run
- * (rate limits, SERP depth, businesses that hide email). Use multi-city
- * or paid APIs for very large lists.
- */
 const TARGET_MAX = 2500;
+
+/** Major US metros for multi-city expansion (public business discovery only). */
+const US_METRO_HINTS = [
+  'New York, NY',
+  'Los Angeles, CA',
+  'Chicago, IL',
+  'Houston, TX',
+  'Phoenix, AZ',
+  'Philadelphia, PA',
+  'San Antonio, TX',
+  'San Diego, CA',
+  'Dallas, TX',
+  'Austin, TX',
+  'Miami, FL',
+  'Atlanta, GA',
+  'Seattle, WA',
+  'Denver, CO',
+  'Boston, MA',
+];
 
 function normalizeLead(lead) {
   const emails = [...(Array.isArray(lead.emails) ? lead.emails : []), lead.email || '']
@@ -146,14 +158,14 @@ async function scrapeMulti(keyword, location, options = {}) {
   if (enrichWebsites && allLeads.length) {
     onProgress({
       stage: 'website_crawl',
-      message: `Crawling websites for emails (up to 400)…`,
+      message: `Crawling websites for public contact emails (up to 500)…`,
       percent: 65,
     });
     try {
       await enrichLeadsWithWebsiteEmails(allLeads, {
         onProgress,
-        concurrency: 6,
-        maxLeads: 400,
+        concurrency: 8,
+        maxLeads: 500,
       });
       for (let i = 0; i < allLeads.length; i++) allLeads[i] = normalizeLead(allLeads[i]);
       const withEmail = allLeads.filter((l) => l.email).length;
@@ -197,4 +209,97 @@ async function scrapeMulti(keyword, location, options = {}) {
   };
 }
 
-module.exports = { scrapeMulti, DEFAULT_SOURCES, SOURCE_RUNNERS, TARGET_MAX };
+/**
+ * Run the same keyword across several US metros and merge/dedupe.
+ * Use when city is omitted or multiCity=true — public business discovery only.
+ */
+async function scrapeMultiCity(keyword, options = {}) {
+  const {
+    cities = US_METRO_HINTS.slice(0, 8),
+    sources = DEFAULT_SOURCES,
+    onProgress = () => {},
+    enrichWebsites = true,
+  } = options;
+
+  const allLeads = [];
+  const seen = new Set();
+  const perCity = {};
+
+  for (let i = 0; i < cities.length; i++) {
+    if (allLeads.length >= TARGET_MAX) break;
+    const city = cities[i];
+    const loc = `${city}, United States`;
+    onProgress({
+      stage: 'multi_city',
+      message: `City ${i + 1}/${cities.length}: ${city} (${allLeads.length} so far)`,
+      percent: Math.floor((i / cities.length) * 90),
+    });
+    try {
+      const result = await scrapeMulti(keyword, loc, {
+        sources,
+        enrichWebsites: false,
+        skipIds: Array.from(seen),
+        onProgress: (p) =>
+          onProgress({
+            ...p,
+            message: `[${city}] ${p.message || ''}`,
+            percent: Math.floor((i / cities.length) * 90) + Math.floor(((p.percent || 0) / 100) * (90 / cities.length)),
+          }),
+      });
+      let added = 0;
+      for (const lead of result.leads || []) {
+        if (allLeads.length >= TARGET_MAX) break;
+        const key = dedupeKey(lead);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        allLeads.push(normalizeLead(lead));
+        added++;
+      }
+      perCity[city] = { kept: added };
+    } catch (err) {
+      perCity[city] = { error: err.message };
+    }
+  }
+
+  if (enrichWebsites && allLeads.length) {
+    onProgress({ stage: 'website_crawl', message: 'Crawling websites for emails…', percent: 92 });
+    await enrichLeadsWithWebsiteEmails(allLeads, { onProgress, concurrency: 8, maxLeads: 500 });
+    for (let i = 0; i < allLeads.length; i++) allLeads[i] = normalizeLead(allLeads[i]);
+  }
+
+  allLeads.sort((a, b) => {
+    const ae = a.email ? 1 : 0;
+    const be = b.email ? 1 : 0;
+    if (be !== ae) return be - ae;
+    return (b.emailScore || 0) - (a.emailScore || 0);
+  });
+
+  onProgress({
+    stage: 'final',
+    message: `Multi-city done. ${allLeads.length} leads (${allLeads.filter((l) => l.email).length} with email)`,
+    percent: 100,
+  });
+
+  return {
+    leads: allLeads,
+    meta: {
+      totalCards: allLeads.length,
+      processedCount: allLeads.length,
+      withEmail: allLeads.filter((l) => l.email).length,
+      targetMax: TARGET_MAX,
+      multiCity: true,
+      cities,
+      perCity,
+      sources,
+    },
+  };
+}
+
+module.exports = {
+  scrapeMulti,
+  scrapeMultiCity,
+  DEFAULT_SOURCES,
+  SOURCE_RUNNERS,
+  TARGET_MAX,
+  US_METRO_HINTS,
+};

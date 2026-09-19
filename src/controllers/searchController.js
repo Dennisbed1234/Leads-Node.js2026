@@ -1,4 +1,9 @@
-const { scrapeMulti, DEFAULT_SOURCES } = require('../scraper/orchestrator');
+const {
+  scrapeMulti,
+  scrapeMultiCity,
+  DEFAULT_SOURCES,
+  US_METRO_HINTS,
+} = require('../scraper/orchestrator');
 
 function buildLocation({ country, state, city, area }) {
   const locationParts = [];
@@ -22,19 +27,34 @@ function parseSources(raw) {
   return DEFAULT_SOURCES;
 }
 
+function truthy(v) {
+  return v === true || v === '1' || v === 'true' || v === 'yes';
+}
+
 exports.search = async (req, res) => {
   try {
-    const { category, country, state, city, area, processedIds, sources, enrichWebsites } = req.body;
-    const locationString = buildLocation({ country, state, city, area });
+    const { category, country, state, city, area, processedIds, sources, enrichWebsites, multiCity } =
+      req.body;
     const keyword = category;
-    if (!keyword || !locationString) {
-      return res.status(400).json({ error: 'Category and Location are required' });
+    if (!keyword) {
+      return res.status(400).json({ error: 'Category is required' });
     }
-    const result = await scrapeMulti(keyword, locationString, {
+
+    const opts = {
       sources: parseSources(sources),
       skipIds: Array.isArray(processedIds) ? processedIds : [],
       enrichWebsites: enrichWebsites !== false,
-    });
+    };
+
+    const useMulti = truthy(multiCity) || (!city && !area);
+    let result;
+    if (useMulti) {
+      result = await scrapeMultiCity(keyword, opts);
+    } else {
+      const locationString = buildLocation({ country, state, city, area });
+      result = await scrapeMulti(keyword, locationString, opts);
+    }
+
     res.json({
       success: true,
       count: result.leads.length,
@@ -59,11 +79,11 @@ exports.searchStream = async (req, res) => {
     res.write(`data: ${JSON.stringify(data)}\n\n`);
   };
   try {
-    const { category, country, state, city, area, processedIds, sources, enrichWebsites } = req.query;
-    const locationString = buildLocation({ country, state, city, area });
+    const { category, country, state, city, area, processedIds, sources, enrichWebsites, multiCity } =
+      req.query;
     const keyword = category;
-    if (!keyword || !locationString) {
-      send('error', { error: 'Category and Location are required' });
+    if (!keyword) {
+      send('error', { error: 'Category is required' });
       res.end();
       return;
     }
@@ -74,12 +94,22 @@ exports.searchStream = async (req, res) => {
         if (Array.isArray(parsed)) skipIds = parsed;
       } catch (_) {}
     }
-    const result = await scrapeMulti(keyword, locationString, {
+    const opts = {
       sources: parseSources(sources),
       onProgress: (payload) => send('progress', payload),
       skipIds,
       enrichWebsites: enrichWebsites !== '0' && enrichWebsites !== 'false',
-    });
+    };
+
+    const useMulti = truthy(multiCity) || (!city && !area);
+    let result;
+    if (useMulti) {
+      result = await scrapeMultiCity(keyword, opts);
+    } else {
+      const locationString = buildLocation({ country, state, city, area });
+      result = await scrapeMulti(keyword, locationString, opts);
+    }
+
     send('done', {
       success: true,
       count: result.leads.length,
@@ -103,15 +133,15 @@ exports.listSources = (req, res) => {
       { id: 'google_web', label: 'Google Search', description: 'Multi-dork SERP' },
       { id: 'bing', label: 'Bing Search', description: 'Second search engine' },
       { id: 'social', label: 'Social', description: 'Public FB / LinkedIn company / IG via search' },
-      { id: 'directories', label: 'Directories', description: 'Yelp, YellowPages, BBB, Manta, Angi, Superpages…' },
+      { id: 'directories', label: 'Directories', description: 'Yelp, YellowPages, BBB, Manta, Angi…' },
       { id: 'github', label: 'GitHub', description: 'Public profiles' },
     ],
-    enrichment: { website_crawl: 'Public contact pages for emails' },
+    enrichment: { website_crawl: 'Public contact pages for business emails' },
+    multiCity: {
+      description: 'When no city is selected (or multiCity=true), search major US metros and merge',
+      metros: US_METRO_HINTS,
+    },
     default: DEFAULT_SOURCES,
     targetMax: 2500,
-    notes: [
-      'Apollo and other commercial sales databases are not supported (not public open data).',
-      '10k emails in one free public run is not realistic; use multi-city runs or paid APIs for very large lists.',
-    ],
   });
 };
