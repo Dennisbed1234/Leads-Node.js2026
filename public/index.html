@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#070b14" />
   <title>US Leads Generator</title>
   <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="css/extractor.css" />
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet" />
 </head>
 <body>
@@ -17,7 +18,7 @@
   <div class="container">
     <header>
       <h1>US Leads <span class="highlight">Generator</span></h1>
-      <p class="subtitle">Modular OSINT · Maps · Directories · Google · Bing · DuckDuckGo · Social · Website emails</p>
+      <p class="subtitle">Modular OSINT · Maps · Directories · Search · Email extractor · Export CSV / TXT</p>
     </header>
 
     <section class="glass-panel control-panel" id="controlPanel">
@@ -98,12 +99,36 @@
           <label class="source-chip"><input type="checkbox" name="source" value="directories" checked /> Directories</label>
           <label class="source-chip"><input type="checkbox" name="source" value="github" /> GitHub</label>
         </div>
-        <p class="hint">Leave <strong>City</strong> empty to auto-run major US metros and merge results. Each source is a module (theHarvester-style). After discovery, public contact pages are crawled for emails. Export CSV when done.</p>
+        <p class="hint">Leave <strong>City</strong> empty to auto-run major US metros. Website contact pages are crawled for emails after discovery.</p>
       </div>
 
       <div class="field field-full">
         <button type="button" id="scrapeBtn" class="primary-btn">Start search</button>
       </div>
+    </section>
+
+    <section class="glass-panel extractor-panel" id="extractorPanel">
+      <div class="extractor-header">
+        <h2>Email extractor</h2>
+        <span class="hint-inline">Paste any text — extract unique emails (client-side)</span>
+      </div>
+      <label class="sr-only" for="extractInput">Paste text</label>
+      <textarea id="extractInput" class="extract-textarea" rows="6" placeholder="Paste text, HTML, CSV, or a messy list here…"></textarea>
+      <div class="extract-options">
+        <label class="opt-chip"><input type="radio" name="extractSep" value="newline" checked /> One per line</label>
+        <label class="opt-chip"><input type="radio" name="extractSep" value="comma" /> Comma</label>
+        <label class="opt-chip"><input type="radio" name="extractSep" value="semicolon" /> Semicolon</label>
+        <label class="opt-chip"><input type="checkbox" id="extractSort" checked /> Sort A–Z</label>
+        <label class="opt-chip"><input type="checkbox" id="extractUnique" checked /> Unique only</label>
+      </div>
+      <div class="extract-actions">
+        <button type="button" id="extractBtn" class="primary-btn extract-btn">Extract emails</button>
+        <button type="button" id="extractClearBtn" class="secondary-btn">Clear</button>
+        <button type="button" id="extractCopyBtn" class="secondary-btn">Copy result</button>
+        <button type="button" id="extractTxtBtn" class="secondary-btn">Download TXT</button>
+      </div>
+      <div class="extract-meta"><span id="extractCount">0 emails</span></div>
+      <textarea id="extractOutput" class="extract-textarea extract-output" rows="5" readonly placeholder="Extracted emails appear here…"></textarea>
     </section>
 
     <div class="status-bar hidden" id="statusBar">
@@ -126,6 +151,7 @@
         <div class="results-actions">
           <button type="button" class="secondary-btn hidden" id="getMoreBtn">Get more</button>
           <button type="button" class="secondary-btn" id="downloadBtn">Download CSV</button>
+          <button type="button" class="secondary-btn" id="downloadTxtBtn">Download TXT</button>
         </div>
       </div>
       <div class="table-wrapper">
@@ -147,5 +173,6 @@
   </div>
 
   <script src="js/app.js"></script>
+  <script src="js/extractor.js"></script>
 </body>
 </html>
