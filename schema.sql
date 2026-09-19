@@ -1,5 +1,5 @@
-CREATE DATABASE IF NOT EXISTS raj_leads_db;
-USE raj_leads_db;
+CREATE DATABASE IF NOT EXISTS daddyg_leads_db;
+USE daddyg_leads_db;
 
 CREATE TABLE IF NOT EXISTS leads (
     id INT AUTO_INCREMENT PRIMARY KEY,
