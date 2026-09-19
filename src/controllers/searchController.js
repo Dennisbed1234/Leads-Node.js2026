@@ -99,14 +99,14 @@ exports.listSources = (req, res) => {
   res.json({
     sources: [
       { id: 'maps', label: 'Google Maps', description: 'Local businesses' },
-      { id: 'osm', label: 'OpenStreetMap', description: 'Public OSM POIs + contact tags' },
-      { id: 'google_web', label: 'Google Search', description: 'Multi-dork SERP emails + links' },
-      { id: 'bing', label: 'Bing Search', description: 'Second engine for more public results' },
-      { id: 'github', label: 'GitHub', description: 'Public profiles by keyword + location' },
+      { id: 'osm', label: 'OpenStreetMap', description: 'Public OSM POIs' },
+      { id: 'google_web', label: 'Google Search', description: 'Multi-dork SERP' },
+      { id: 'bing', label: 'Bing Search', description: 'Second search engine' },
+      { id: 'social', label: 'Social / directories', description: 'Public FB, LinkedIn company, Yelp, YellowPages via search' },
+      { id: 'github', label: 'GitHub', description: 'Public profiles' },
     ],
-    enrichment: {
-      website_crawl: 'After discovery, crawls public contact/about pages for mailto and visible emails',
-    },
+    enrichment: { website_crawl: 'Public contact pages for emails' },
     default: DEFAULT_SOURCES,
+    targetMax: 1000,
   });
 };

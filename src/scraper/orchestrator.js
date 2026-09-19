@@ -1,13 +1,9 @@
-/**
- * Multi-source US lead + public email orchestrator.
- * Sources: maps, osm, github, google_web, bing + website email enrichment.
- */
-
 const scrapeMaps = require('./engine');
 const { scrapeGitHub } = require('./github');
 const { scrapeGoogleWeb } = require('./googleWeb');
 const { scrapeBingWeb } = require('./bingWeb');
 const { scrapeOSM } = require('./osm');
+const { scrapeSocial } = require('./social');
 const { enrichLeadsWithWebsiteEmails } = require('./websiteCrawl');
 const { isLikelyRealEmail } = require('./emailUtils');
 
@@ -17,15 +13,14 @@ const SOURCE_RUNNERS = {
   google_web: (keyword, location, opts) => scrapeGoogleWeb(keyword, location, opts),
   bing: (keyword, location, opts) => scrapeBingWeb(keyword, location, opts),
   osm: (keyword, location, opts) => scrapeOSM(keyword, location, opts),
+  social: (keyword, location, opts) => scrapeSocial(keyword, location, opts),
 };
 
-const DEFAULT_SOURCES = ['maps', 'osm', 'google_web', 'bing', 'github'];
+const DEFAULT_SOURCES = ['maps', 'osm', 'google_web', 'bing', 'social', 'github'];
+const TARGET_MAX = 1000;
 
 function normalizeLead(lead) {
-  const emails = [
-    ...(Array.isArray(lead.emails) ? lead.emails : []),
-    lead.email || '',
-  ]
+  const emails = [...(Array.isArray(lead.emails) ? lead.emails : []), lead.email || '']
     .map((e) => String(e || '').toLowerCase().trim())
     .filter(isLikelyRealEmail);
   const uniq = [...new Set(emails)];
@@ -79,15 +74,17 @@ async function scrapeMulti(keyword, location, options = {}) {
   const perSource = {};
 
   for (let i = 0; i < selected.length; i++) {
+    if (allLeads.length >= TARGET_MAX) break;
     const source = selected[i];
     const basePct = Math.floor((i / selected.length) * 55);
     onProgress({
       stage: 'source',
-      message: `Running source: ${source} (${i + 1}/${selected.length})`,
+      message: `Running source: ${source} (${i + 1}/${selected.length}) — ${allLeads.length} so far`,
       percent: basePct + 5,
       source,
     });
     try {
+      const room = TARGET_MAX - allLeads.length;
       const result = await SOURCE_RUNNERS[source](keyword, location, {
         onProgress: (p) =>
           onProgress({
@@ -96,11 +93,12 @@ async function scrapeMulti(keyword, location, options = {}) {
             percent: basePct + Math.floor(((p.percent || 0) / 100) * (55 / selected.length)),
           }),
         skipIds: Array.from(seen),
-        max: source === 'maps' ? 120 : 60,
+        max: source === 'maps' ? Math.min(400, room) : Math.min(250, room),
       });
       const leads = (result.leads || []).map((l) => normalizeLead({ ...l, source: l.source || source }));
       let added = 0;
       for (const lead of leads) {
+        if (allLeads.length >= TARGET_MAX) break;
         const key = dedupeKey(lead);
         if (seen.has(key) || (lead.id && seen.has(lead.id))) continue;
         seen.add(key);
@@ -111,7 +109,7 @@ async function scrapeMulti(keyword, location, options = {}) {
       perSource[source] = { found: leads.length, kept: added };
       onProgress({
         stage: 'source',
-        message: `${source}: kept ${added} of ${leads.length}`,
+        message: `${source}: kept ${added} (total ${allLeads.length})`,
         percent: basePct + Math.floor(55 / selected.length),
         source,
       });
@@ -130,27 +128,24 @@ async function scrapeMulti(keyword, location, options = {}) {
   if (enrichWebsites && allLeads.length) {
     onProgress({
       stage: 'website_crawl',
-      message: `Crawling up to ${Math.min(80, allLeads.length)} public websites for contact emails…`,
+      message: `Crawling websites for emails (up to 150)…`,
       percent: 65,
     });
     try {
       await enrichLeadsWithWebsiteEmails(allLeads, {
         onProgress,
-        concurrency: 4,
-        maxLeads: 80,
+        concurrency: 5,
+        maxLeads: 150,
       });
-      for (let i = 0; i < allLeads.length; i++) {
-        allLeads[i] = normalizeLead(allLeads[i]);
-      }
+      for (let i = 0; i < allLeads.length; i++) allLeads[i] = normalizeLead(allLeads[i]);
       const withEmail = allLeads.filter((l) => l.email).length;
       perSource.website_crawl = { leadsWithEmail: withEmail };
       onProgress({
         stage: 'website_crawl',
-        message: `Website crawl done — ${withEmail} leads have email`,
+        message: `Website crawl done — ${withEmail} with email`,
         percent: 92,
       });
     } catch (err) {
-      console.error('[orchestrator] website crawl:', err.message);
       perSource.website_crawl = { error: err.message };
     }
   }
@@ -164,7 +159,7 @@ async function scrapeMulti(keyword, location, options = {}) {
 
   onProgress({
     stage: 'final',
-    message: `Done. ${allLeads.length} unique leads (${allLeads.filter((l) => l.email).length} with email)`,
+    message: `Done. ${allLeads.length} leads (${allLeads.filter((l) => l.email).length} with email)`,
     percent: 100,
     total: allLeads.length,
   });
@@ -175,6 +170,7 @@ async function scrapeMulti(keyword, location, options = {}) {
       totalCards: allLeads.length,
       processedCount: allLeads.length,
       withEmail: allLeads.filter((l) => l.email).length,
+      targetMax: TARGET_MAX,
       skippedCount: 0,
       remaining: 0,
       sources: selected,
@@ -183,4 +179,4 @@ async function scrapeMulti(keyword, location, options = {}) {
   };
 }
 
-module.exports = { scrapeMulti, DEFAULT_SOURCES, SOURCE_RUNNERS };
+module.exports = { scrapeMulti, DEFAULT_SOURCES, SOURCE_RUNNERS, TARGET_MAX };
