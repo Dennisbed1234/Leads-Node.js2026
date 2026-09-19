@@ -12,7 +12,7 @@
   <div class="container">
     <header>
       <h1>US Leads <span class="highlight">Generator</span></h1>
-      <p>Multi-source OSINT · Maps · GitHub · OSM · Google Search</p>
+      <p>Public emails · Maps · SERP · Website crawl · Bing · OSM · GitHub</p>
     </header>
     <div class="control-panel glass-panel">
       <div class="input-group">
@@ -70,9 +70,11 @@
         <div id="sourceChecks" style="display:flex;flex-wrap:wrap;gap:12px;padding:8px 0">
           <label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" name="source" value="maps" checked /> Google Maps</label>
           <label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" name="source" value="osm" checked /> OpenStreetMap</label>
-          <label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" name="source" value="github" checked /> GitHub</label>
           <label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" name="source" value="google_web" checked /> Google Search</label>
+          <label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" name="source" value="bing" checked /> Bing</label>
+          <label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" name="source" value="github" checked /> GitHub</label>
         </div>
+        <p style="font-size:12px;opacity:0.75;margin:4px 0 0">After discovery, public websites are crawled for /contact & mailto emails automatically.</p>
       </div>
       <div class="input-group action-group">
         <button id="scrapeBtn" class="primary-btn"><span>Start Scraping</span><div class="btn-glow"></div></button>
