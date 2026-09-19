@@ -4,7 +4,7 @@ require('dotenv').config();
 const config = {
     user: process.env.DB_USER || 'root',
     password: process.env.DB_PASSWORD || '',
-    database: process.env.DB_NAME || 'raj_leads',
+    database: process.env.DB_NAME || 'daddyg_leads',
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0
