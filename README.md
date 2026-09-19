@@ -1,40 +1,38 @@
-# US Leads Generator (Node.js)
+# US Leads + Public Email Finder (Node.js)
 
-Multi-source **US-focused** lead scraper. India/Nepal geo filters were removed.
+Multi-source **US business** lead tool with **public email** extraction.
+
+## Architecture (inspired by common OSS patterns)
+
+| Phase | What | Similar to |
+|-------|------|------------|
+| 1. Discovery | Maps, OSM, Google/Bing SERP, GitHub | theHarvester / EmailFinder multi-engine |
+| 2. Website crawl | Homepage + `/contact` `/about` + mailto | emailextractor contact traversal |
+| 3. Normalize | Dedupe, junk filter, score domain match | Email-Harvester scoring |
 
 ## Sources
 
-| Source | What it pulls |
-|--------|----------------|
-| **Google Maps** | Local businesses (Playwright) |
-| **OpenStreetMap** | Public POIs via Nominatim + Overpass |
-| **GitHub** | Public users/orgs by keyword + location |
-| **Google Search** | SERP titles, phones, emails from snippets |
+- **Google Maps** — local businesses (phone, site, address)
+- **OpenStreetMap** — free POIs + `contact:email` when tagged
+- **Google Search** — multi-dork queries for contact emails in snippets
+- **Bing Search** — second SERP for more coverage
+- **GitHub** — public profiles (optional `GITHUB_TOKEN`)
+- **Website crawl** (always on after discovery) — fetches public pages only
 
-## Quick start
+## Run
 
 ```bash
 npm install
 npx playwright install chromium
-# optional: higher GitHub rate limit
-# echo 'GITHUB_TOKEN=ghp_xxx' >> .env
-# optional: skip MySQL
-# echo 'DB_DISABLED=true' >> .env
+echo 'DB_DISABLED=true' >> .env
+# optional
+echo 'GITHUB_TOKEN=ghp_xxx' >> .env
 node src/server.js
 ```
 
-Open http://localhost:3000 — United States is selected by default.
+## Scope
 
-## API
+Collects **publicly posted** business contact emails (mailto, contact pages, search snippets).  
+Does **not** access private inboxes, bypass logins/CAPTCHAs, or query breach databases.
 
-- `GET /api/countries` — US (+ CA, GB, AU)
-- `GET /api/sources` — available scrapers
-- `POST /api/search` — `{ category, country, state, city, area?, sources?: string[] }`
-- `GET /api/search/stream` — SSE progress + same params
-
-## Notes
-
-- GitHub unauthenticated API is rate-limited (~60/hr). Set `GITHUB_TOKEN`.
-- OSM asks for polite User-Agent usage; do not hammer Overpass.
-- Google Maps/SERP scraping may break when Google changes HTML or blocks automation.
-- Use only for legitimate B2B research on public business data.
+Use responsibly and respect site terms and applicable law.
