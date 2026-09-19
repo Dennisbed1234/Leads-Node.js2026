@@ -1,6 +1,6 @@
-# 🚀 Raj Leader Generator: Pure Node.js Implementation Plan
+# 🚀 DaddyG Leader Generator: Pure Node.js Implementation Plan
 
-This is the master plan for building the **Raj Leader Generator** as a brand new, high-performance project using **100% Node.js**.
+This is the master plan for building the **DaddyG Leader Generator** as a brand new, high-performance project using **100% Node.js**.
 
 **Goal:** Eliminate PHP/Python dependencies. Build a single, fast, and reliable application that extracts **ALL** available business leads (unlimited scrolling) using a unified JavaScript stack.
 
@@ -24,7 +24,7 @@ We are moving to a **Monolithic Node.js Architecture**. One server handles every
 This structure ensures code is modular, readable, and scalable.
 
 ```
-raj_lead_gen_node/
+daddyg_lead_gen_node/
 ├── src/
 │   ├── config/
 │   │   ├── db.js             # MySQL Connection Pool
@@ -97,8 +97,8 @@ async function scrapeAll(keyword, location) {
 
 ### Step 1: Initialization
 ```bash
-mkdir raj_lead_gen_node
-cd raj_lead_gen_node
+mkdir daddyg_lead_gen_node
+cd daddyg_lead_gen_node
 npm init -y
 npm install express mysql2 playwright dotenv cors
 ```
