@@ -12,7 +12,7 @@ This project is a **Google Maps lead scraper** built with **Node.js + Express + 
 
 ## Project Tree
 ```
-raj_leads_nodejs/
+daddyg_leads_nodejs/
 ├── csvtemplate/
 │   └── sample_leads_import.csv
 ├── location/
