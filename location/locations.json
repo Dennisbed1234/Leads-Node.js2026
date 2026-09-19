@@ -1,66 +1,20 @@
 {
-    "countries": [
-        {
-            "name": "India",
-            "states": [
-                {
-                    "name": "Uttar Pradesh",
-                    "cities": [
-                        "Lucknow",
-                        "Kanpur",
-                        "Varanasi",
-                        "Agra",
-                        "Noida"
-                    ]
-                },
-                {
-                    "name": "Delhi",
-                    "cities": [
-                        "New Delhi",
-                        "Dwarka",
-                        "Rohini",
-                        "Saket"
-                    ]
-                },
-                {
-                    "name": "Maharashtra",
-                    "cities": [
-                        "Mumbai",
-                        "Pune",
-                        "Nagpur",
-                        "Thane"
-                    ]
-                },
-                {
-                    "name": "Rajasthan",
-                    "cities": [
-                        "Jaipur",
-                        "Jodhpur",
-                        "Udaipur",
-                        "Ajmer"
-                    ]
-                }
-            ]
-        },
-        {
-            "name": "Nepal",
-            "states": [
-                {
-                    "name": "Bagmati",
-                    "cities": [
-                        "Kathmandu",
-                        "Lalitpur",
-                        "Bhaktapur"
-                    ]
-                },
-                {
-                    "name": "Gandaki",
-                    "cities": [
-                        "Pokhara",
-                        "Gorkha"
-                    ]
-                }
-            ]
-        }
-    ]
+  "countries": [
+    {
+      "name": "United States",
+      "isoCode": "US",
+      "states": [
+        { "name": "California", "cities": ["Los Angeles", "San Francisco", "San Diego", "San Jose", "Sacramento"] },
+        { "name": "Texas", "cities": ["Houston", "Dallas", "Austin", "San Antonio", "Fort Worth"] },
+        { "name": "Florida", "cities": ["Miami", "Orlando", "Tampa", "Jacksonville", "Fort Lauderdale"] },
+        { "name": "New York", "cities": ["New York", "Buffalo", "Rochester", "Albany", "Syracuse"] },
+        { "name": "Illinois", "cities": ["Chicago", "Aurora", "Naperville", "Joliet", "Rockford"] },
+        { "name": "Pennsylvania", "cities": ["Philadelphia", "Pittsburgh", "Allentown", "Erie", "Reading"] },
+        { "name": "Ohio", "cities": ["Columbus", "Cleveland", "Cincinnati", "Toledo", "Akron"] },
+        { "name": "Georgia", "cities": ["Atlanta", "Augusta", "Savannah", "Columbus", "Athens"] },
+        { "name": "North Carolina", "cities": ["Charlotte", "Raleigh", "Greensboro", "Durham", "Winston-Salem"] },
+        { "name": "Arizona", "cities": ["Phoenix", "Tucson", "Mesa", "Chandler", "Scottsdale"] }
+      ]
+    }
+  ]
 }
