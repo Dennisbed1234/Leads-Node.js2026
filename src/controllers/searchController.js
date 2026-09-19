@@ -102,11 +102,16 @@ exports.listSources = (req, res) => {
       { id: 'osm', label: 'OpenStreetMap', description: 'Public OSM POIs' },
       { id: 'google_web', label: 'Google Search', description: 'Multi-dork SERP' },
       { id: 'bing', label: 'Bing Search', description: 'Second search engine' },
-      { id: 'social', label: 'Social / directories', description: 'Public FB, LinkedIn company, Yelp, YellowPages via search' },
+      { id: 'social', label: 'Social', description: 'Public FB / LinkedIn company / IG via search' },
+      { id: 'directories', label: 'Directories', description: 'Yelp, YellowPages, BBB, Manta, Angi, Superpages…' },
       { id: 'github', label: 'GitHub', description: 'Public profiles' },
     ],
     enrichment: { website_crawl: 'Public contact pages for emails' },
     default: DEFAULT_SOURCES,
-    targetMax: 1000,
+    targetMax: 2500,
+    notes: [
+      'Apollo and other commercial sales databases are not supported (not public open data).',
+      '10k emails in one free public run is not realistic; use multi-city runs or paid APIs for very large lists.',
+    ],
   });
 };
