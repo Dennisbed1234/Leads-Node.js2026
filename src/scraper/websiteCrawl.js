@@ -1,6 +1,6 @@
 /**
- * Crawl public website pages for contact emails (mailto + visible text).
- * Pattern inspired by emailextractor / Email-Harvester: homepage + contact/about paths.
+ * Crawl public website pages for business contact emails.
+ * Homepage + contact/about paths; deobfuscates common [at]/[dot] patterns.
  */
 
 const { extractEmails, extractMailto, domainFromUrl, scoreEmail } = require('./emailUtils');
@@ -10,19 +10,31 @@ const CONTACT_PATHS = [
   '/contact',
   '/contact-us',
   '/contactus',
+  '/contact.html',
+  '/contact.php',
   '/about',
   '/about-us',
   '/aboutus',
+  '/about.html',
   '/team',
+  '/our-team',
+  '/staff',
   '/support',
   '/get-in-touch',
   '/connect',
+  '/locations',
+  '/find-us',
+  '/reach-us',
+  '/enquiry',
+  '/inquiry',
+  '/book',
+  '/booking',
 ];
 
 const UA =
-  'Mozilla/5.0 (compatible; USLeadsBot/1.0; +https://github.com/Dennisbed1234/Leads-Node.js2026; research)';
+  'Mozilla/5.0 (compatible; USLeadsBot/1.1; +https://github.com/Dennisbed1234/Leads-Node.js2026; research)';
 
-async function fetchText(url, timeoutMs = 12000) {
+async function fetchText(url, timeoutMs = 14000) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
@@ -38,7 +50,8 @@ async function fetchText(url, timeoutMs = 12000) {
     if (!res.ok) return '';
     const ctype = res.headers.get('content-type') || '';
     if (!/text\/html|text\/plain|application\/xhtml/i.test(ctype) && ctype) return '';
-    return await res.text();
+    const text = await res.text();
+    return text.length > 800000 ? text.slice(0, 800000) : text;
   } catch {
     return '';
   } finally {
@@ -60,16 +73,23 @@ function findExtraContactLinks(html, baseUrl) {
   let m;
   while ((m = re.exec(html))) {
     const href = m[1];
-    if (/contact|about|team|support|get-in-touch/i.test(href) && !/^mailto:/i.test(href)) {
+    if (
+      /contact|about|team|support|get-in-touch|enquiry|inquiry|locations|reach/i.test(href) &&
+      !/^mailto:/i.test(href) &&
+      !/^#/i.test(href) &&
+      !/\.(pdf|jpg|png|css|js)$/i.test(href)
+    ) {
       const abs = absolutize(baseUrl, href);
-      if (abs && abs.startsWith('http')) links.push(abs);
+      if (abs && abs.startsWith('http') && abs.includes(new URL(baseUrl).hostname)) {
+        links.push(abs.split('#')[0]);
+      }
     }
   }
-  return [...new Set(links)].slice(0, 5);
+  return [...new Set(links)].slice(0, 8);
 }
 
 async function crawlWebsiteForEmails(websiteUrl, opts = {}) {
-  const maxPages = opts.maxPages || 6;
+  const maxPages = opts.maxPages || 8;
   let base;
   try {
     const u = new URL(websiteUrl.startsWith('http') ? websiteUrl : `https://${websiteUrl}`);
@@ -99,7 +119,7 @@ async function crawlWebsiteForEmails(websiteUrl, opts = {}) {
     const pathHint = url.replace(base, '') || '/';
     const fromMailto = extractMailto(html);
     const fromText = extractEmails(html);
-    const isContact = /contact|about|team|support/i.test(pathHint);
+    const isContact = /contact|about|team|support|enquiry|inquiry|locations|reach/i.test(pathHint);
 
     for (const email of fromMailto) {
       const prev = byEmail.get(email);
@@ -112,7 +132,7 @@ async function crawlWebsiteForEmails(websiteUrl, opts = {}) {
       if (!prev || score > prev.score) byEmail.set(email, { email, score, path: pathHint });
     }
 
-    if (pagesChecked === 1) {
+    if (pagesChecked <= 2) {
       for (const extra of findExtraContactLinks(html, base)) {
         if (!seenUrl.has(extra)) queue.push(extra);
       }
@@ -124,26 +144,26 @@ async function crawlWebsiteForEmails(websiteUrl, opts = {}) {
 }
 
 async function enrichLeadsWithWebsiteEmails(leads, options = {}) {
-  const { onProgress = () => {}, concurrency = 4, maxLeads = 80 } = options;
-  const targets = leads.filter((l) => l.website && /^https?:/i.test(l.website)).slice(0, maxLeads);
+  const { onProgress = () => {}, concurrency = 8, maxLeads = 500 } = options;
+  const targets = leads
+    .filter((l) => l.website && /^https?:/i.test(String(l.website)))
+    .slice(0, maxLeads);
   let done = 0;
 
   async function worker(slice) {
     for (const lead of slice) {
       try {
-        const { emails } = await crawlWebsiteForEmails(lead.website, { maxPages: 5 });
+        const { emails } = await crawlWebsiteForEmails(lead.website, { maxPages: 7 });
         if (emails.length) {
           const best = emails[0];
-          lead.email = lead.email || best.email;
-          lead.emails = emails.map((e) => e.email);
+          lead.email = best.email;
+          lead.emails = [...new Set([...(lead.emails || []), ...emails.map((e) => e.email)])];
           lead.emailScore = best.score;
           lead.extra = { ...(lead.extra || {}), emailPaths: emails.map((e) => e.path) };
         }
-      } catch (err) {
-        // skip
-      }
+      } catch (_) {}
       done++;
-      if (done % 5 === 0 || done === targets.length) {
+      if (done % 8 === 0 || done === targets.length) {
         onProgress({
           stage: 'website_crawl',
           message: `Website email crawl ${done}/${targets.length}`,
