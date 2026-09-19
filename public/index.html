@@ -17,7 +17,7 @@
   <div class="container">
     <header>
       <h1>US Leads <span class="highlight">Generator</span></h1>
-      <p class="subtitle">Multi-source OSINT · Maps · Directories · Social · Google · Bing · Website emails</p>
+      <p class="subtitle">Modular OSINT · Maps · Directories · Google · Bing · DuckDuckGo · Social · Website emails</p>
     </header>
 
     <section class="glass-panel control-panel" id="controlPanel">
@@ -87,17 +87,18 @@
       </div>
 
       <div class="field field-full sources-block">
-        <label>Sources</label>
+        <label>Sources (modules)</label>
         <div class="sources-grid" id="sourceChecks">
           <label class="source-chip"><input type="checkbox" name="source" value="maps" checked /> Maps</label>
           <label class="source-chip"><input type="checkbox" name="source" value="osm" checked /> OSM</label>
           <label class="source-chip"><input type="checkbox" name="source" value="google_web" checked /> Google</label>
           <label class="source-chip"><input type="checkbox" name="source" value="bing" checked /> Bing</label>
+          <label class="source-chip"><input type="checkbox" name="source" value="duckduckgo" checked /> DuckDuckGo</label>
           <label class="source-chip"><input type="checkbox" name="source" value="social" checked /> Social</label>
           <label class="source-chip"><input type="checkbox" name="source" value="directories" checked /> Directories</label>
           <label class="source-chip"><input type="checkbox" name="source" value="github" /> GitHub</label>
         </div>
-        <p class="hint">Directories = Yelp, YellowPages, BBB, Manta, Angi, Superpages and similar public listings via search. Website pages are crawled for contact emails after discovery. Very large lists need multi-city runs.</p>
+        <p class="hint">Leave <strong>City</strong> empty to auto-run major US metros and merge results. Each source is a module (theHarvester-style). After discovery, public contact pages are crawled for emails. Export CSV when done.</p>
       </div>
 
       <div class="field field-full">
