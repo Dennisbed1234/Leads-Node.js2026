@@ -1,12 +1,12 @@
 {
   "name": "daddyg_leads_nodejs",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "US Leads + Public Email Finder (Node.js)",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
     "dev": "node src/server.js",
-    "postinstall": "node -e \"if (!process.env.VERCEL && !process.env.AWS_LAMBDA_FUNCTION_NAME) { require('child_process').execSync('npx playwright install chromium', {stdio:'inherit'}) }\" || true",
+    "postinstall": "node scripts/postinstall-playwright.js",
     "playwright:install": "npx playwright install chromium",
     "geonames:build": "node scripts/geonames_build.js"
   },
@@ -24,6 +24,7 @@
     "dotenv": "^16.4.5",
     "express": "^4.21.0",
     "mysql2": "^3.11.0",
+    "playwright": "^1.49.0",
     "playwright-core": "^1.49.0"
   }
 }
