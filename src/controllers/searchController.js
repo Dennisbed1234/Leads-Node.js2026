@@ -10,11 +10,20 @@ const isServerless =
   !!process.env.AWS_LAMBDA_FUNCTION_NAME ||
   !!process.env.AWS_EXECUTION_ENV;
 
-function buildLocation({ country, state, city, area }) {
+function buildLocation({ country, state, stateCode, city, area }) {
   const locationParts = [];
   if (area) locationParts.push(area);
   if (city) locationParts.push(city);
-  if (state) locationParts.push(state);
+  // state may already include "Illinois, IL" from the frontend
+  if (state) {
+    locationParts.push(state);
+  } else if (stateCode) {
+    locationParts.push(stateCode);
+  }
+  // Avoid duplicating state code if frontend already embedded it
+  if (stateCode && state && !String(state).includes(stateCode)) {
+    locationParts.push(stateCode);
+  }
   locationParts.push(country || 'United States');
   return locationParts.join(', ');
 }
@@ -41,8 +50,18 @@ function truthy(v) {
 
 exports.search = async (req, res) => {
   try {
-    const { category, country, state, city, area, processedIds, sources, enrichWebsites, multiCity } =
-      req.body;
+    const {
+      category,
+      country,
+      state,
+      stateCode,
+      city,
+      area,
+      processedIds,
+      sources,
+      enrichWebsites,
+      multiCity,
+    } = req.body;
     const keyword = category;
     if (!keyword) {
       return res.status(400).json({ error: 'Category is required' });
@@ -54,14 +73,13 @@ exports.search = async (req, res) => {
       enrichWebsites: enrichWebsites !== false,
     };
 
-    // Never multi-city on serverless unless forced — it always times out
     const useMulti =
-      !isServerless && (truthy(multiCity) || (!city && !area));
+      !isServerless && (truthy(multiCity) || (!city && !area && !state));
     let result;
     if (useMulti) {
       result = await scrapeMultiCity(keyword, opts);
     } else {
-      const locationString = buildLocation({ country, state, city, area });
+      const locationString = buildLocation({ country, state, stateCode, city, area });
       result = await scrapeMulti(keyword, locationString, opts);
     }
 
@@ -96,7 +114,6 @@ exports.searchStream = async (req, res) => {
     } catch (_) {}
   };
 
-  // Keep connection alive on Vercel / proxies
   const heartbeat = setInterval(() => {
     try {
       res.write(`: ping ${Date.now()}\n\n`);
@@ -104,8 +121,18 @@ exports.searchStream = async (req, res) => {
   }, 12000);
 
   try {
-    const { category, country, state, city, area, processedIds, sources, enrichWebsites, multiCity } =
-      req.query;
+    const {
+      category,
+      country,
+      state,
+      stateCode,
+      city,
+      area,
+      processedIds,
+      sources,
+      enrichWebsites,
+      multiCity,
+    } = req.query;
     const keyword = category;
     if (!keyword) {
       send('error', { error: 'Category is required' });
@@ -126,12 +153,12 @@ exports.searchStream = async (req, res) => {
     };
 
     const useMulti =
-      !isServerless && (truthy(multiCity) || (!city && !area));
+      !isServerless && (truthy(multiCity) || (!city && !area && !state));
     let result;
     if (useMulti) {
       result = await scrapeMultiCity(keyword, opts);
     } else {
-      const locationString = buildLocation({ country, state, city, area });
+      const locationString = buildLocation({ country, state, stateCode, city, area });
       result = await scrapeMulti(keyword, locationString, opts);
     }
 
