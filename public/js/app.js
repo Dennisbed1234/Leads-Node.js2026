@@ -224,7 +224,7 @@
   }
 
   function escapeHtml(s) {
-    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    return String(s).replace(/&/g, '&').replace(/</g, '<').replace(/>/g, '>').replace(/"/g, '"');
   }
 
   function displayResults(data, append) {
@@ -245,6 +245,23 @@
     resultCount.textContent = String(resultsTableBody.children.length);
   }
 
+  /** Build location string including state code for better backend matching */
+  function buildSearchParams() {
+    // Include state code so "Illinois, IL, United States" parses cleanly on the server
+    const statePart = selectedState
+      ? (selectedStateCode ? selectedState + ', ' + selectedStateCode : selectedState)
+      : '';
+    return {
+      category: selectedCategory,
+      country: selectedCountry,
+      state: statePart,
+      stateCode: selectedStateCode || '',
+      city: selectedCity,
+      area: selectedArea,
+      sources: getSelectedSources().join(','),
+    };
+  }
+
   scrapeBtn.addEventListener('click', () => {
     const sources = getSelectedSources();
     if (!selectedCategory || !selectedCountry) { alert('Choose a category and country.'); return; }
@@ -252,15 +269,21 @@
     statusBar.classList.remove('hidden');
     resultsContainer.classList.add('hidden');
     scrapeBtn.disabled = true;
-    statusText.textContent = 'Searching… large runs can take several minutes';
+    statusText.textContent = 'Searching…';
     resetTracking();
     processedIds = new Set();
-    lastPayload = { category: selectedCategory, country: selectedCountry, state: selectedState, city: selectedCity, area: selectedArea, sources };
+    const searchParams = buildSearchParams();
+    lastPayload = {
+      category: selectedCategory,
+      country: selectedCountry,
+      state: searchParams.state,
+      stateCode: selectedStateCode,
+      city: selectedCity,
+      area: selectedArea,
+      sources,
+    };
     stopStream();
-    const params = new URLSearchParams({
-      category: selectedCategory, country: selectedCountry, state: selectedState,
-      city: selectedCity, area: selectedArea, sources: sources.join(','),
-    });
+    const params = new URLSearchParams(searchParams);
     activeStream = new EventSource('/api/search/stream?' + params);
     activeStream.addEventListener('progress', (e) => {
       const d = JSON.parse(e.data);
