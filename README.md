@@ -2,7 +2,7 @@
 
 Multi-source **US business** lead tool with **public email** extraction.
 
-## Architecture (inspired by common OSS patterns)
+## Architecture
 
 | Phase | What | Similar to |
 |-------|------|------------|
@@ -12,79 +12,67 @@ Multi-source **US business** lead tool with **public email** extraction.
 
 ## Sources
 
-- **Google Maps** — local businesses (phone, site, address)
-- **OpenStreetMap** — free POIs + `contact:email` when tagged
-- **Google Search** — multi-dork queries for contact emails in snippets
-- **Bing Search** — second SERP for more coverage
-- **GitHub** — public profiles (optional `GITHUB_TOKEN`)
-- **Website crawl** (always on after discovery) — fetches public pages only
+| Source | Browser? | Works on Vercel? |
+|--------|----------|------------------|
+| OpenStreetMap | No | Yes |
+| GitHub | No | Yes |
+| Website crawl (public pages) | No | Yes |
+| Google Maps / Google / Bing / Yahoo / DDG / Social / Directories | Yes | No (timeout / Chromium limits) |
 
 ## Local Run
 
 ```bash
 npm install
-# postinstall installs Chromium automatically (skipped on Vercel)
 npm start
-# → http://localhost:3000 (or PORT from .env)
+# → http://localhost:3000
 ```
 
-If you still see "Executable doesn't exist":
-
-```bash
-npx playwright install chromium
-# or
-npm run playwright:install
-```
-
-Create a `.env` (never commit it):
+`.env` example:
 
 ```
 DB_DISABLED=true
-# optional
-GITHUB_TOKEN=ghp_xxx
+GITHUB_TOKEN=ghp_xxx   # optional, higher GitHub rate limits
 PORT=3000
 ```
 
-## Vercel / Serverless Deployment
+## Vercel — why searches used to hang halfway
 
-**Important:** Full multi-source scrapes + Playwright + website crawl of hundreds of sites exceed typical serverless timeouts.  
-This project is tuned for Vercel but still has limits (maxDuration 60s on Pro, lower on Hobby).
+Vercel serverless functions have a hard time limit (≈10s Hobby / 60s Pro by default).  
+Running Google Maps + several SERP modules + crawling hundreds of sites exceeds that, so the connection dropped mid-progress.
 
-### What was fixed for Vercel
+### What we changed so searches **always finish**
 
-1. Switched to `playwright-core` + `@sparticuz/chromium` (serverless-compatible Chromium binary).
-2. Browser launch auto-detects Vercel/Lambda and uses the Sparticuz binary.
-3. Website crawl automatically lowers concurrency & max leads on serverless to reduce timeouts.
-4. Better error isolation so one failed browser launch or bad site does not kill the whole job.
-5. Proper `.gitignore` (node_modules and .env are no longer tracked).
+1. **Serverless defaults** = only `osm` + `github` (no Playwright).
+2. **Hard time budget** (~45s) — remaining modules / crawl are skipped instead of hanging.
+3. **Website crawl** capped (≈40 sites, concurrency 3) on Vercel.
+4. **Multi-city mode disabled** on serverless.
+5. **SSE heartbeats** so the UI does not show a dead “connection error”.
+6. Browser modules are still available on a long-running host (Railway, Render, Fly, VPS).
 
-### Deploy steps
+### Deploy
 
-1. Push this repo to GitHub (without `node_modules`).
-2. Import the project in Vercel.
-3. Set Environment Variables if needed:
+1. Redeploy from GitHub after these commits.
+2. Env (also set in `vercel.json`):
    - `DB_DISABLED=true`
-   - `PLAYWRIGHT_USE_SPARTICUZ=1` (already set in vercel.json)
-4. Deploy. The build will **not** run `playwright install` (skipped automatically).
+   - `SCRAPE_TIME_BUDGET_MS=45000`
+3. Pick a **specific city** in the UI (e.g. Chicago, IL).
+4. Start a search — you should see progress for OSM → GitHub → website crawl → **Done** within ~30–50s.
 
-### Recommended usage on Vercel
+### Need more leads / Maps / Google SERP?
 
-- Select a specific city (avoid multi-city mode which is heavier).
-- Prefer lighter sources if you hit timeouts (disable Google/Bing if needed).
-- Expect the "Website email crawl" stage to process fewer sites than on a long-running server.
-- For heavy production use, prefer a long-running host (Railway, Render, Fly.io, DigitalOcean App Platform, etc.).
+Run the same repo on a **persistent** host:
 
-### Troubleshooting Playwright on Vercel
+```bash
+npm install
+npx playwright install chromium
+npm start
+```
 
-If you still see browser launch errors:
-
-- Confirm `@sparticuz/chromium` and `playwright-core` are in `dependencies`.
-- Do **not** run `npx playwright install` in the Vercel build command.
-- Increase `maxDuration` in `vercel.json` if you are on a Pro plan (up to 300s).
+Or set `FORCE_BROWSER_MODULES=1` on a host with enough time/memory (not recommended on Vercel Hobby).
 
 ## Scope
 
-Collects **publicly posted** business contact emails (mailto, contact pages, search snippets).  
-Does **not** access private inboxes, bypass logins/CAPTCHAs, or query breach databases.
+Collects **publicly posted** business contact emails (mailto links, contact pages, public search snippets, OSM tags, public GitHub profiles).  
+Does **not** access private inboxes, bypass logins/CAPTCHAs, or use data-breach / leak databases.
 
 Use responsibly and respect site terms and applicable law.
