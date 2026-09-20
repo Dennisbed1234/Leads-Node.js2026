@@ -12,13 +12,13 @@ const {
 const { enrichLeadsWithWebsiteEmails } = require('./websiteCrawl');
 const { isLikelyRealEmail } = require('./emailUtils');
 
-const TARGET_MAX = isServerless ? 120 : 2500;
-const WEBSITE_MAX = isServerless ? 40 : 500;
-const WEBSITE_CONCURRENCY = isServerless ? 3 : 8;
-/** Leave headroom under Vercel maxDuration (60s default / up to 300s Pro) */
+const TARGET_MAX = isServerless ? 80 : 2500;
+const WEBSITE_MAX = isServerless ? 20 : 500;
+const WEBSITE_CONCURRENCY = isServerless ? 2 : 6;
+/** Leave headroom under Vercel maxDuration (60s default) */
 const TIME_BUDGET_MS = isServerless
   ? Number(process.env.SCRAPE_TIME_BUDGET_MS || 45000)
-  : Number(process.env.SCRAPE_TIME_BUDGET_MS || 0); // 0 = no limit locally
+  : Number(process.env.SCRAPE_TIME_BUDGET_MS || 0);
 
 const US_METRO_HINTS = [
   'New York, NY',
@@ -78,9 +78,9 @@ function dedupeKey(lead) {
 
 function sourceMax(sourceId, room) {
   if (isServerless) {
-    if (sourceId === 'osm') return Math.min(50, room);
-    if (sourceId === 'github') return Math.min(30, room);
-    return Math.min(25, room);
+    if (sourceId === 'osm') return Math.min(40, room);
+    if (sourceId === 'github') return Math.min(25, room);
+    return Math.min(20, room);
   }
   if (sourceId === 'maps') return Math.min(600, room);
   if (sourceId === 'directories') return Math.min(500, room);
@@ -92,11 +92,12 @@ function sourceMax(sourceId, room) {
 
 function withTimeout(promise, ms, label) {
   if (!ms || ms <= 0) return promise;
+  let timer;
   return Promise.race([
-    promise,
-    new Promise((_, reject) =>
-      setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
-    ),
+    promise.finally(() => clearTimeout(timer)),
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    }),
   ]);
 }
 
@@ -110,7 +111,7 @@ async function scrapeMulti(keyword, location, options = {}) {
 
   const started = Date.now();
   const deadline = TIME_BUDGET_MS > 0 ? started + TIME_BUDGET_MS : Infinity;
-  const remainingMs = () => Math.max(0, deadline - Date.now());
+  const remainingMs = () => Math.max(0, deadline === Infinity ? 0 : deadline - Date.now());
 
   const modules = resolveModules(sources);
   const allLeads = [];
@@ -127,7 +128,7 @@ async function scrapeMulti(keyword, location, options = {}) {
 
   for (let i = 0; i < modules.length; i++) {
     if (allLeads.length >= TARGET_MAX) break;
-    if (Date.now() >= deadline - 8000) {
+    if (TIME_BUDGET_MS > 0 && Date.now() >= deadline - 12000) {
       onProgress({
         stage: 'budget',
         message: 'Time budget low — skipping remaining discovery modules',
@@ -147,7 +148,10 @@ async function scrapeMulti(keyword, location, options = {}) {
 
     try {
       const room = TARGET_MAX - allLeads.length;
-      const modTimeout = Math.min(20000, Math.max(5000, remainingMs() - 10000));
+      const modTimeout =
+        TIME_BUDGET_MS > 0
+          ? Math.min(18000, Math.max(4000, remainingMs() - 15000))
+          : 0;
       const result = await withTimeout(
         mod.run(keyword, location, {
           onProgress: (p) =>
@@ -194,38 +198,48 @@ async function scrapeMulti(keyword, location, options = {}) {
     }
   }
 
-  const doEnrich = enrichWebsites && allLeads.length && remainingMs() > 5000;
+  // Reserve time for website crawl — need at least ~5s remaining
+  const crawlBudget =
+    TIME_BUDGET_MS > 0 ? Math.min(18000, Math.max(0, remainingMs() - 3000)) : 0;
+  const doEnrich = enrichWebsites && allLeads.length && (crawlBudget > 4000 || TIME_BUDGET_MS === 0);
+
   if (doEnrich) {
     onProgress({
       stage: 'website_crawl',
-      message: `Crawling websites for public contact emails (up to ${WEBSITE_MAX})…`,
+      message: `Crawling websites for public emails (up to ${WEBSITE_MAX} sites)…`,
       percent: 65,
     });
     try {
+      // Internal deadline is the real stop; outer timeout is a safety net
       await withTimeout(
         enrichLeadsWithWebsiteEmails(allLeads, {
           onProgress,
           concurrency: WEBSITE_CONCURRENCY,
           maxLeads: WEBSITE_MAX,
+          deadlineMs: crawlBudget || (isServerless ? 18000 : 0),
         }),
-        Math.max(3000, remainingMs() - 2000),
+        crawlBudget > 0 ? crawlBudget + 2000 : 0,
         'website_crawl'
       );
       for (let i = 0; i < allLeads.length; i++) allLeads[i] = normalizeLead(allLeads[i]);
-      perSource.website_crawl = { leadsWithEmail: allLeads.filter((l) => l.email).length };
+      perSource.website_crawl = {
+        leadsWithEmail: allLeads.filter((l) => l.email).length,
+      };
     } catch (err) {
-      perSource.website_crawl = { error: err.message };
+      // Partial results are fine — normalize what we have and continue to Done
+      perSource.website_crawl = { error: err.message, partial: true };
+      for (let i = 0; i < allLeads.length; i++) allLeads[i] = normalizeLead(allLeads[i]);
       onProgress({
         stage: 'website_crawl',
-        message: `Website crawl stopped: ${err.message}`,
-        percent: 90,
+        message: `Website crawl stopped early: ${err.message}`,
+        percent: 92,
       });
     }
   } else if (enrichWebsites && allLeads.length) {
     onProgress({
       stage: 'website_crawl',
       message: 'Skipped website crawl (time budget)',
-      percent: 90,
+      percent: 92,
     });
   }
 
@@ -259,7 +273,6 @@ async function scrapeMulti(keyword, location, options = {}) {
 }
 
 async function scrapeMultiCity(keyword, options = {}) {
-  // Multi-city is too heavy for serverless — fall back to a single major metro
   if (isServerless) {
     const city = (options.cities && options.cities[0]) || 'Chicago, IL';
     options.onProgress?.({
