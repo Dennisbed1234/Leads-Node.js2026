@@ -2,7 +2,12 @@ const isServerless =
   !!process.env.VERCEL ||
   !!process.env.AWS_LAMBDA_FUNCTION_NAME ||
   !!process.env.AWS_EXECUTION_ENV ||
-  process.env.NODE_ENV === 'production' && !!process.env.NOW_REGION;
+  (!!process.env.NOW_REGION && process.env.NODE_ENV === 'production');
+
+// Render / Railway / Fly / local → full Playwright Chromium
+const useSparticuz =
+  process.env.PLAYWRIGHT_USE_SPARTICUZ === '1' ||
+  (isServerless && process.env.PLAYWRIGHT_USE_SPARTICUZ !== '0');
 
 async function startBrowser() {
   const launchOptions = {
@@ -13,42 +18,44 @@ async function startBrowser() {
       '--disable-blink-features=AutomationControlled',
       '--disable-dev-shm-usage',
       '--disable-gpu',
-      '--single-process', // often needed on serverless
-      '--no-zygote',
     ],
   };
 
-  // Explicit override always wins
+  // Extra flags only for tight serverless sandboxes
+  if (useSparticuz || isServerless) {
+    launchOptions.args.push('--single-process', '--no-zygote');
+  }
+
   if (process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH) {
     launchOptions.executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
   }
 
   let chromium;
   try {
-    if (isServerless || process.env.PLAYWRIGHT_USE_SPARTICUZ === '1') {
-      // Serverless-friendly Chromium (Vercel / Lambda)
+    if (useSparticuz) {
       const sparticuz = require('@sparticuz/chromium');
       const { chromium: pwChromium } = require('playwright-core');
       chromium = pwChromium;
       launchOptions.executablePath = await sparticuz.executablePath();
-      launchOptions.args = [...sparticuz.args, ...launchOptions.args.filter(a => !sparticuz.args.includes(a))];
-      // Sparticuz defaults already include many of the needed flags
+      launchOptions.args = [
+        ...sparticuz.args,
+        ...launchOptions.args.filter((a) => !sparticuz.args.includes(a)),
+      ];
     } else {
-      // Local / traditional install
-      const pw = require('playwright');
-      chromium = pw.chromium;
+      // Render, local, Railway, etc.
+      try {
+        const pw = require('playwright');
+        chromium = pw.chromium;
+      } catch {
+        const { chromium: pwChromium } = require('playwright-core');
+        chromium = pwChromium;
+      }
     }
   } catch (reqErr) {
-    // Fallback if packages missing
-    try {
-      const pw = require('playwright');
-      chromium = pw.chromium;
-    } catch {
-      throw new Error(
-        'Neither playwright nor playwright-core + @sparticuz/chromium is available. ' +
-          'Run: npm install playwright   or   npm install playwright-core @sparticuz/chromium'
-      );
-    }
+    throw new Error(
+      'Playwright is not available. On Render/local run: npm install && npx playwright install chromium\n' +
+        String(reqErr && reqErr.message ? reqErr.message : reqErr)
+    );
   }
 
   try {
@@ -66,14 +73,10 @@ async function startBrowser() {
     const msg = String(err && err.message ? err.message : err);
     if (/Executable doesn'?t exist|browserType\.launch|Failed to launch/i.test(msg)) {
       const help =
-        'Playwright Chromium browser is missing or incompatible with this environment.\n' +
-        'Local fix:\n' +
-        '  npx playwright install chromium\n' +
-        '  or: npm run playwright:install\n\n' +
-        'Serverless (Vercel/Lambda):\n' +
-        '  Ensure @sparticuz/chromium and playwright-core are installed.\n' +
-        '  The browser binary is provided by @sparticuz/chromium at runtime.\n' +
-        '  Do NOT run "playwright install" on Vercel (it is skipped automatically).';
+        'Playwright Chromium browser is missing.\n' +
+        'On Render: set build command to:\n' +
+        '  npm install && npx playwright install-deps chromium && npx playwright install chromium\n' +
+        'Locally: npx playwright install chromium';
       const enhanced = new Error(`${msg}\n\n${help}`);
       enhanced.original = err;
       throw enhanced;
