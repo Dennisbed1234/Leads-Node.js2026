@@ -17,5 +17,10 @@
       "maxDuration": 60,
       "memory": 1024
     }
+  },
+  "env": {
+    "PLAYWRIGHT_USE_SPARTICUZ": "1",
+    "DB_DISABLED": "true",
+    "SCRAPE_TIME_BUDGET_MS": "45000"
   }
 }
