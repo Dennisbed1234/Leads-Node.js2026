@@ -1,16 +1,41 @@
 /**
  * Orchestrator — runs selected discovery modules (theHarvester / recon-ng style).
+ * On Vercel/serverless: strict time budget so the function always returns before timeout.
  */
-const { resolveModules, DEFAULT_MODULES, listModules } = require('../modules/registry');
+const {
+  resolveModules,
+  DEFAULT_MODULES,
+  SERVERLESS_DEFAULT_MODULES,
+  listModules,
+  isServerless,
+} = require('../modules/registry');
 const { enrichLeadsWithWebsiteEmails } = require('./websiteCrawl');
 const { isLikelyRealEmail } = require('./emailUtils');
 
-const TARGET_MAX = 2500;
+const TARGET_MAX = isServerless ? 120 : 2500;
+const WEBSITE_MAX = isServerless ? 40 : 500;
+const WEBSITE_CONCURRENCY = isServerless ? 3 : 8;
+/** Leave headroom under Vercel maxDuration (60s default / up to 300s Pro) */
+const TIME_BUDGET_MS = isServerless
+  ? Number(process.env.SCRAPE_TIME_BUDGET_MS || 45000)
+  : Number(process.env.SCRAPE_TIME_BUDGET_MS || 0); // 0 = no limit locally
 
 const US_METRO_HINTS = [
-  'New York, NY', 'Los Angeles, CA', 'Chicago, IL', 'Houston, TX', 'Phoenix, AZ',
-  'Philadelphia, PA', 'San Antonio, TX', 'San Diego, CA', 'Dallas, TX', 'Austin, TX',
-  'Miami, FL', 'Atlanta, GA', 'Seattle, WA', 'Denver, CO', 'Boston, MA',
+  'New York, NY',
+  'Los Angeles, CA',
+  'Chicago, IL',
+  'Houston, TX',
+  'Phoenix, AZ',
+  'Philadelphia, PA',
+  'San Antonio, TX',
+  'San Diego, CA',
+  'Dallas, TX',
+  'Austin, TX',
+  'Miami, FL',
+  'Atlanta, GA',
+  'Seattle, WA',
+  'Denver, CO',
+  'Boston, MA',
 ];
 
 function normalizeLead(lead) {
@@ -52,6 +77,11 @@ function dedupeKey(lead) {
 }
 
 function sourceMax(sourceId, room) {
+  if (isServerless) {
+    if (sourceId === 'osm') return Math.min(50, room);
+    if (sourceId === 'github') return Math.min(30, room);
+    return Math.min(25, room);
+  }
   if (sourceId === 'maps') return Math.min(600, room);
   if (sourceId === 'directories') return Math.min(500, room);
   if (sourceId === 'social') return Math.min(300, room);
@@ -60,21 +90,52 @@ function sourceMax(sourceId, room) {
   return Math.min(250, room);
 }
 
+function withTimeout(promise, ms, label) {
+  if (!ms || ms <= 0) return promise;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+    ),
+  ]);
+}
+
 async function scrapeMulti(keyword, location, options = {}) {
   const {
-    sources = DEFAULT_MODULES,
+    sources,
     onProgress = () => {},
     skipIds = [],
     enrichWebsites = true,
   } = options;
+
+  const started = Date.now();
+  const deadline = TIME_BUDGET_MS > 0 ? started + TIME_BUDGET_MS : Infinity;
+  const remainingMs = () => Math.max(0, deadline - Date.now());
 
   const modules = resolveModules(sources);
   const allLeads = [];
   const seen = new Set(skipIds.filter(Boolean));
   const perSource = {};
 
+  if (isServerless) {
+    onProgress({
+      stage: 'init',
+      message: `Serverless mode: ${modules.map((m) => m.id).join(', ')} (budget ~${Math.round(TIME_BUDGET_MS / 1000)}s)`,
+      percent: 2,
+    });
+  }
+
   for (let i = 0; i < modules.length; i++) {
     if (allLeads.length >= TARGET_MAX) break;
+    if (Date.now() >= deadline - 8000) {
+      onProgress({
+        stage: 'budget',
+        message: 'Time budget low — skipping remaining discovery modules',
+        percent: 60,
+      });
+      break;
+    }
+
     const mod = modules[i];
     const basePct = Math.floor((i / modules.length) * 55);
     onProgress({
@@ -83,19 +144,27 @@ async function scrapeMulti(keyword, location, options = {}) {
       percent: basePct + 5,
       source: mod.id,
     });
+
     try {
       const room = TARGET_MAX - allLeads.length;
-      const result = await mod.run(keyword, location, {
-        onProgress: (p) =>
-          onProgress({
-            ...p,
-            source: mod.id,
-            percent: basePct + Math.floor(((p.percent || 0) / 100) * (55 / modules.length)),
-          }),
-        skipIds: Array.from(seen),
-        max: sourceMax(mod.id, room),
-      });
-      const leads = (result.leads || []).map((l) => normalizeLead({ ...l, source: l.source || mod.id }));
+      const modTimeout = Math.min(20000, Math.max(5000, remainingMs() - 10000));
+      const result = await withTimeout(
+        mod.run(keyword, location, {
+          onProgress: (p) =>
+            onProgress({
+              ...p,
+              source: mod.id,
+              percent: basePct + Math.floor(((p.percent || 0) / 100) * (55 / modules.length)),
+            }),
+          skipIds: Array.from(seen),
+          max: sourceMax(mod.id, room),
+        }),
+        modTimeout,
+        mod.id
+      );
+      const leads = (result.leads || []).map((l) =>
+        normalizeLead({ ...l, source: l.source || mod.id })
+      );
       let added = 0;
       for (const lead of leads) {
         if (allLeads.length >= TARGET_MAX) break;
@@ -125,19 +194,39 @@ async function scrapeMulti(keyword, location, options = {}) {
     }
   }
 
-  if (enrichWebsites && allLeads.length) {
+  const doEnrich = enrichWebsites && allLeads.length && remainingMs() > 5000;
+  if (doEnrich) {
     onProgress({
       stage: 'website_crawl',
-      message: 'Crawling websites for public contact emails (up to 500)…',
+      message: `Crawling websites for public contact emails (up to ${WEBSITE_MAX})…`,
       percent: 65,
     });
     try {
-      await enrichLeadsWithWebsiteEmails(allLeads, { onProgress, concurrency: 8, maxLeads: 500 });
+      await withTimeout(
+        enrichLeadsWithWebsiteEmails(allLeads, {
+          onProgress,
+          concurrency: WEBSITE_CONCURRENCY,
+          maxLeads: WEBSITE_MAX,
+        }),
+        Math.max(3000, remainingMs() - 2000),
+        'website_crawl'
+      );
       for (let i = 0; i < allLeads.length; i++) allLeads[i] = normalizeLead(allLeads[i]);
       perSource.website_crawl = { leadsWithEmail: allLeads.filter((l) => l.email).length };
     } catch (err) {
       perSource.website_crawl = { error: err.message };
+      onProgress({
+        stage: 'website_crawl',
+        message: `Website crawl stopped: ${err.message}`,
+        percent: 90,
+      });
     }
+  } else if (enrichWebsites && allLeads.length) {
+    onProgress({
+      stage: 'website_crawl',
+      message: 'Skipped website crawl (time budget)',
+      percent: 90,
+    });
   }
 
   allLeads.sort((a, b) => {
@@ -149,7 +238,7 @@ async function scrapeMulti(keyword, location, options = {}) {
 
   onProgress({
     stage: 'final',
-    message: `Done. ${allLeads.length} leads (${allLeads.filter((l) => l.email).length} with email)`,
+    message: `Done. ${allLeads.length} leads (${allLeads.filter((l) => l.email).length} with email) in ${Math.round((Date.now() - started) / 1000)}s`,
     percent: 100,
     total: allLeads.length,
   });
@@ -163,11 +252,27 @@ async function scrapeMulti(keyword, location, options = {}) {
       targetMax: TARGET_MAX,
       sources: modules.map((m) => m.id),
       perSource,
+      serverless: isServerless,
+      elapsedMs: Date.now() - started,
     },
   };
 }
 
 async function scrapeMultiCity(keyword, options = {}) {
+  // Multi-city is too heavy for serverless — fall back to a single major metro
+  if (isServerless) {
+    const city = (options.cities && options.cities[0]) || 'Chicago, IL';
+    options.onProgress?.({
+      stage: 'multi_city',
+      message: `Serverless: single-city fallback (${city})`,
+      percent: 5,
+    });
+    return scrapeMulti(keyword, `${city}, United States`, {
+      ...options,
+      enrichWebsites: options.enrichWebsites !== false,
+    });
+  }
+
   const {
     cities = US_METRO_HINTS.slice(0, 8),
     sources = DEFAULT_MODULES,
@@ -219,7 +324,11 @@ async function scrapeMultiCity(keyword, options = {}) {
 
   if (enrichWebsites && allLeads.length) {
     onProgress({ stage: 'website_crawl', message: 'Crawling websites for emails…', percent: 92 });
-    await enrichLeadsWithWebsiteEmails(allLeads, { onProgress, concurrency: 8, maxLeads: 500 });
+    await enrichLeadsWithWebsiteEmails(allLeads, {
+      onProgress,
+      concurrency: WEBSITE_CONCURRENCY,
+      maxLeads: WEBSITE_MAX,
+    });
     for (let i = 0; i < allLeads.length; i++) allLeads[i] = normalizeLead(allLeads[i]);
   }
 
@@ -250,7 +359,7 @@ async function scrapeMultiCity(keyword, options = {}) {
   };
 }
 
-const DEFAULT_SOURCES = DEFAULT_MODULES;
+const DEFAULT_SOURCES = isServerless ? SERVERLESS_DEFAULT_MODULES : DEFAULT_MODULES;
 const SOURCE_RUNNERS = {};
 
 module.exports = {
@@ -258,6 +367,7 @@ module.exports = {
   scrapeMultiCity,
   DEFAULT_SOURCES,
   DEFAULT_MODULES,
+  SERVERLESS_DEFAULT_MODULES,
   SOURCE_RUNNERS,
   TARGET_MAX,
   US_METRO_HINTS,
