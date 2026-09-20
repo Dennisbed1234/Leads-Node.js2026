@@ -1,0 +1,22 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+# Deploy: New → Blueprint → connect this repo
+
+services:
+  - type: web
+    name: leads-nodejs
+    runtime: node
+    plan: free # upgrade if you need always-on / more RAM for heavy scrapes
+    region: oregon # change if you prefer
+    buildCommand: npm install && npx playwright install-deps chromium && npx playwright install chromium
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: DB_DISABLED
+        value: "true"
+      - key: PLAYWRIGHT_USE_SPARTICUZ
+        value: "0"
+      # Optional: higher GitHub API rate limit for the github source
+      # - key: GITHUB_TOKEN
+      #   sync: false
