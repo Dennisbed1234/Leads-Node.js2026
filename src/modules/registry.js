@@ -13,6 +13,11 @@ const { scrapeDuckDuckGo } = require('../scraper/duckduckgo');
 const { scrapeYahooWeb } = require('../scraper/yahooWeb');
 const { scrapeEmailDorks } = require('../scraper/emailDorks');
 
+const isServerless =
+  !!process.env.VERCEL ||
+  !!process.env.AWS_LAMBDA_FUNCTION_NAME ||
+  !!process.env.AWS_EXECUTION_ENV;
+
 const MODULES = {
   maps: {
     id: 'maps',
@@ -86,9 +91,25 @@ const MODULES = {
   },
 };
 
+/** Full set — local / long-running hosts only */
 const DEFAULT_MODULES = [
-  'maps', 'osm', 'google_web', 'bing', 'yahoo', 'duckduckgo', 'email_dorks', 'social', 'directories',
+  'maps',
+  'osm',
+  'google_web',
+  'bing',
+  'yahoo',
+  'duckduckgo',
+  'email_dorks',
+  'social',
+  'directories',
+  'github',
 ];
+
+/**
+ * Vercel / Lambda safe defaults: API-only sources (no Chromium).
+ * Website crawl (fetch) still runs after discovery for public contact emails.
+ */
+const SERVERLESS_DEFAULT_MODULES = ['osm', 'github'];
 
 function listModules() {
   return Object.values(MODULES).map(({ id, label, description, needsBrowser }) => ({
@@ -100,10 +121,28 @@ function listModules() {
 }
 
 function resolveModules(ids) {
-  const selected = (Array.isArray(ids) && ids.length ? ids : DEFAULT_MODULES)
+  const fallback = isServerless ? SERVERLESS_DEFAULT_MODULES : DEFAULT_MODULES;
+  const selected = (Array.isArray(ids) && ids.length ? ids : fallback)
     .map((s) => String(s).toLowerCase().trim())
     .filter((id) => MODULES[id]);
-  return selected.map((id) => MODULES[id]);
+
+  // On serverless, drop browser modules unless explicitly forced
+  const forceBrowser = process.env.FORCE_BROWSER_MODULES === '1';
+  const filtered =
+    isServerless && !forceBrowser
+      ? selected.filter((id) => !MODULES[id].needsBrowser)
+      : selected;
+
+  // Always keep at least OSM if everything was filtered out
+  if (!filtered.length) return [MODULES.osm];
+  return filtered.map((id) => MODULES[id]);
 }
 
-module.exports = { MODULES, DEFAULT_MODULES, listModules, resolveModules };
+module.exports = {
+  MODULES,
+  DEFAULT_MODULES,
+  SERVERLESS_DEFAULT_MODULES,
+  listModules,
+  resolveModules,
+  isServerless,
+};
